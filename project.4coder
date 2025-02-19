@@ -1,0 +1,39 @@
+version(1);
+project_name = "walker";
+patterns = {
+    "*.jai"
+};
+blacklist_patterns = {
+    ".*",
+};
+load_paths = {
+    {
+        {{"."}, .recursive = true, .relative = true},
+        .os = "win"
+	},
+};
+command_list = {
+    {
+        .name = "build",
+        .out = "*compilation*",
+        .footer_panel = true,
+        .save_dirty_files = true,
+        .cursor_at_end = false,
+        .cmd = {
+            { "jai first.jai", .os = "win" },
+		},
+	},
+	{
+		.name = "run",
+		.out = "*compilation*",
+		.footer_panel = true,
+		.save_dirty_files = true,
+		.cursor_at_end = true,
+		.cmd = {
+			{"run.bat", .os = "win"},
+		},
+	},
+};
+
+fkey_command[7] = "build";
+fkey_command[5] = "run";

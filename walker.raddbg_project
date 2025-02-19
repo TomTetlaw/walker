@@ -1,0 +1,173 @@
+// raddbg project file
+
+/// watch_pins ////////////////////////////////////////////////////////////////
+
+watch_pin:
+{
+  name: "ymm11"
+  location: (0x7ff615e857e6)
+}
+
+/// watches ///////////////////////////////////////////////////////////////////
+
+watch: "arena_free_list"
+watch: "batch.vertex_buffers.data,5"
+watch: "batch.textures.data,4"
+
+/// targets ///////////////////////////////////////////////////////////////////
+
+target:
+{
+  name: "Walker"
+  executable: "run_tree/walker.exe"
+  working_directory: "run_tree"
+}
+
+/// recent_files //////////////////////////////////////////////////////////////
+
+recent_file: "../twosid/camera.jai"
+recent_file: "../twosid/avx.jai"
+recent_file: "../../../../../temp/SDL3-3.1.6/src/sdl_utils.c"
+recent_file: "../../../../../temp/SDL3-3.1.6/src/sdl_hashtable.c"
+recent_file: "../../../../../temp/SDL3-3.1.6/src/atomic/sdl_atomic.c"
+recent_file: "../../../../../j/msdk/build/Vulkan-ValidationLayers/repo/layers/vulkan/generated/chassis.cpp"
+recent_file: "../twosid/animation.jai"
+recent_file: "../twosid/math_matrix.jai"
+recent_file: "../../../../../jai/modules/basic/string_builder.jai"
+recent_file: "../../../../../j/msdk0/build/DXC/repo/tools/clang/tools/dxcompiler/dxcompilerobj.cpp"
+recent_file: "../../../../../j/msdk0/build/DXC/repo/lib/dxcsupport/unicode.cpp"
+recent_file: "../../../../../temp/SDL3-3.1.6/src/gpu/vulkan/sdl_gpu_vulkan.c"
+recent_file: "../../../../../Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.29.30133/include/xstring"
+recent_file: "../../../Downloads/DirectXShaderCompiler-main/tools/clang/tools/dxcompiler/dxcompilerobj.cpp"
+recent_file: "../../../Downloads/DirectXShaderCompiler-main/lib/dxcsupport/unicode.cpp"
+recent_file: "../../../Downloads/DirectXShaderCompiler-main/lib/dxcsupport/hlsloptions.cpp"
+recent_file: "../../../../../temp/SDL3-3.1.6/src/stdlib/sdl_qsort.c"
+recent_file: "../../../../../temp/SDL3-3.1.6/src/stdlib/sdl_memcpy.c"
+recent_file: "../../../../../temp/SDL3-3.1.6/src/stdlib/sdl_memmove.c"
+recent_file: "../../../../../temp/SDL3-3.1.6/src/gpu/sdl_gpu.c"
+recent_file: "../twosid/shader.jai"
+recent_file: "../../../../../temp/SDL3-3.1.6/src/dynapi/sdl_dynapi_procs.h"
+recent_file: "../../../../../temp/SDL3-3.1.6/src/video/sdl_video.c"
+recent_file: "../twosid/game.jai"
+recent_file: "../../../../../temp/SDL3-3.1.6/src/gpu/d3d12/sdl_gpu_d3d12.c"
+recent_file: "../../../../../jai/modules/file/windows.jai"
+recent_file: "../twosid/math_operators.jai"
+recent_file: "../../../../../temp/SDL3-3.1.6/src/joystick/hidapi/sdl_hidapi_xboxone.c"
+recent_file: "../twosid/texture.jai"
+recent_file: "../twosid/math.jai"
+recent_file: "../twosid/renderer_buffer.jai"
+recent_file: "../twosid/mesh.jai"
+recent_file: "../twosid/math_geometry.jai"
+recent_file: "../twosid/immui.jai"
+recent_file: "../twosid/terrain.jai"
+recent_file: "../twosid/.build/.added_strings_w3.jai"
+recent_file: "../twosid/entity.jai"
+recent_file: "../twosid/world.jai"
+recent_file: "../twosid/utils.jai"
+recent_file: "../twosid/renderer.jai"
+recent_file: "../twosid/memory.jai"
+recent_file: "../twosid/font.jai"
+recent_file: "../../../../../jai/modules/print_vars.jai"
+recent_file: "../twosid/renderer_frontend.jai"
+recent_file: "../twosid/editor.jai"
+recent_file: "../twosid/main.jai"
+recent_file: "../nosferatu/input.jai"
+recent_file: "../../../../../jai/modules/string/module.jai"
+recent_file: "../nosferatu/gpu_upload.jai"
+recent_file: "../../../../../jai/modules/file_watcher/module.jai"
+recent_file: "../../../../../j/msdk0/build/Vulkan-ValidationLayers/repo/layers/core_checks/cc_spirv.cpp"
+recent_file: "../../../../../jai/modules/hash.jai"
+recent_file: "../../../../../jai/modules/basic/int128.jai"
+recent_file: "../nosferatu/containers.jai"
+recent_file: "../nosferatu/shader.jai"
+recent_file: "../nosferatu/math_matrix.jai"
+recent_file: "../nosferatu/camera.jai"
+recent_file: "../nosferatu/memory.jai"
+recent_file: "../../../../../jai/modules/default_allocator/module.jai"
+recent_file: "../../../../../jai/modules/basic/simple_string.jai"
+recent_file: "../../../../../jai/modules/command_line.jai"
+recent_file: "../../../../../jai/modules/basic/print.jai"
+recent_file: "../nosferatu/texture.jai"
+recent_file: "../nuclear/first.jai"
+recent_file: "../nosferatu/entity.jai"
+recent_file: "../nosferatu/main.jai"
+recent_file: "../nosferatu/mesh.jai"
+recent_file: "../nosferatu/gpu_transfer.jai"
+recent_file: "../nosferatu/renderer.jai"
+recent_file: "../nuclear/run_tree/nuclear.exe"
+recent_file: "../../../../../jai/modules/bucket_array.jai"
+recent_file: "../nuclear/.build/.added_strings_w3.jai"
+recent_file: "../../../../../jai/modules/math/module.jai"
+recent_file: "../../../../../jai/modules/random.jai"
+recent_file: "../nuclear/entity.jai"
+recent_file: "../nuclear/utils.jai"
+recent_file: "../nuclear/memory.jai"
+recent_file: "../nuclear/containers.jai"
+recent_file: "../nuclear/geometry.jai"
+recent_file: "../../../../../jai/modules/math/cephes.jai"
+recent_file: "../nuclear/math.jai"
+recent_file: "../nuclear/main.jai"
+recent_file: "../../../../../jai/modules/runtime_support.jai"
+recent_file: "../nuclear/fluid.jai"
+recent_file: "../../../../../jai/modules/basic/array.jai"
+recent_file: "../../../../../jai/modules/basic/module.jai"
+recent_file: "input.jai"
+recent_file: "C:/jai/modules/math/module.jai"
+recent_file: "C:/jai/modules/basic/int128.jai"
+recent_file: "C:/jai/modules/windows.jai"
+recent_file: "C:/jai/modules/file_watcher/module.jai"
+recent_file: "shader.jai"
+recent_file: "C:/jai/modules/basic/print.jai"
+recent_file: "gpu.jai"
+recent_file: "mesh.jai"
+recent_file: "texture.jai"
+recent_file: "math_vector.jai"
+recent_file: "entity.jai"
+recent_file: "physics.jai"
+recent_file: "main.jai"
+recent_file: "arena.jai"
+recent_file: "renderer.jai"
+
+/// exception code filters ////////////////////////////////////////////////////
+
+exception_code_filters:
+{
+  win32_ctrl_c: 1
+  win32_ctrl_break: 1
+  win32_win_rt_originate_error: 0
+  win32_win_rt_transform_error: 0
+  win32_rpc_call_cancelled: 0
+  win32_datatype_misalignment: 0
+  win32_access_violation: 1
+  win32_in_page_error: 0
+  win32_invalid_handle: 1
+  win32_not_enough_quota: 0
+  win32_illegal_instruction: 0
+  win32_cannot_continue_exception: 0
+  win32_invalid_exception_disposition: 0
+  win32_array_bounds_exceeded: 0
+  win32_floating_point_denormal_operand: 0
+  win32_floating_point_division_by_zero: 0
+  win32_floating_point_inexact_result: 0
+  win32_floating_point_invalid_operation: 0
+  win32_floating_point_overflow: 0
+  win32_floating_point_stack_check: 0
+  win32_floating_point_underflow: 0
+  win32_integer_division_by_zero: 0
+  win32_integer_overflow: 0
+  win32_privileged_instruction: 0
+  win32_stack_overflow: 0
+  win32_unable_to_locate_dll: 0
+  win32_ordinal_not_found: 0
+  win32_entry_point_not_found: 0
+  win32_dll_initialization_failed: 0
+  win32_floating_point_sse_multiple_faults: 0
+  win32_floating_point_sse_multiple_traps: 0
+  win32_assertion_failed: 1
+  win32_module_not_found: 0
+  win32_procedure_not_found: 0
+  win32_sanitizer_error_detected: 1
+  win32_sanitizer_raw_access_violation: 0
+  win32_directx_debug_layer: 1
+}
+

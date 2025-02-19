@@ -1,0 +1,246 @@
+// raddbg user file
+
+/// auto_view_rules ///////////////////////////////////////////////////////////
+
+auto_view_rule:
+{
+  source: "`[] Key_Press`"
+  dest: "slice"
+}
+
+auto_view_rule:
+{
+  source: "Linked_List(T)"
+  dest: "list:(next)"
+}
+
+auto_view_rule:
+{
+  source: "Colour"
+  dest: "colour_rgba"
+}
+
+/// file_path_maps ////////////////////////////////////////////////////////////
+
+file_path_map:
+{
+  source: "C:/j/msdk0/build/DXC/repo"
+  dest: "C:/Users/Thomas Tetlaw/Downloads/DirectXShaderCompiler-main"
+}
+
+file_path_map:
+{
+  source: "F:/nosferatu/gpu_upload.jai"
+  dest: "F:/nosferatu/gpu_transfer.jai"
+}
+
+/// windows ///////////////////////////////////////////////////////////////////
+
+
+/// recent_projects ///////////////////////////////////////////////////////////
+
+recent_project: "default.raddbg_project"
+recent_project: "walker.raddbg_project"
+
+/// windows ///////////////////////////////////////////////////////////////////
+
+window:
+{
+  split_y maximized
+  monitor: "\\.\DISPLAY1"
+  size: (1874 1096)
+  dpi: 96.000000
+  main_font_size: 11
+  code_font_size: 11
+  smooth_ui_text: 1
+  smooth_code_text: 0
+  hint_ui_text: 1
+  hint_code_text: 1
+  panels:
+  {
+    0.198245:
+    {
+      0.802916:
+      {
+        watch: {selected project:{"default.raddbg_project"} }
+      }
+      0.197084:
+      {
+        auto_view_rules: {selected project:{"default.raddbg_project"} }
+      }
+    }
+    0.550395:
+    {
+      text: {project:{"default.raddbg_project"} query:{"file:\"main.jai\""} cursor_line:{ 78} cursor_column:{ 1} mark_line:{ 78} mark_column:{1} }
+      text: {project:{"default.raddbg_project"} query:{"file:\"arena.jai\""} cursor_line:{ 125} cursor_column:{ 5} mark_line:{ 125} mark_column:{5} }
+      text: {project:{"default.raddbg_project"} query:{"file:\"../../../../../jai/modules/basic/module.jai\""} cursor_line:{ 117} cursor_column:{ 28} mark_line:{ 117} mark_column:{28} }
+      text: {project:{"default.raddbg_project"} query:{"file:\"../../../../../jai/modules/basic/array.jai\""} cursor_line:{ 260} cursor_column:{ 1} mark_line:{ 260} mark_column:{1} }
+      text: {project:{"default.raddbg_project"} query:{"file:\"input.jai\""} cursor_line:{ 62} cursor_column:{ 1} mark_line:{ 62} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"main.jai\""} cursor_line:{ 174} cursor_column:{ 1} mark_line:{ 174} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"shader.jai\""} cursor_line:{ 20} cursor_column:{ 1} mark_line:{ 20} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"texture.jai\""} cursor_line:{ 53} cursor_column:{ 1} mark_line:{ 53} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"gpu.jai\""} cursor_line:{ 49} cursor_column:{ 1} mark_line:{ 49} mark_column:{1} }
+      text: {selected project:{"walker.raddbg_project"} query:{"file:\"renderer.jai\""} cursor_line:{ 36} cursor_column:{ 1} mark_line:{ 36} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"mesh.jai\""} cursor_line:{ 48} cursor_column:{ 1} mark_line:{ 48} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"math_vector.jai\""} cursor_line:{ 61} cursor_column:{ 1} mark_line:{ 61} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"arena.jai\""} cursor_line:{ 194} cursor_column:{ 1} mark_line:{ 194} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"C:/jai/modules/basic/print.jai\""} cursor_line:{ 346} cursor_column:{ 1} mark_line:{ 346} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"entity.jai\""} cursor_line:{ 75} cursor_column:{ 1} mark_line:{ 75} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"physics.jai\""} cursor_line:{ 20} cursor_column:{ 6} mark_line:{ 20} mark_column:{6} }
+    }
+    0.251359:
+    {
+      0.5:
+      {
+        output: {project:{"default.raddbg_project"} cursor_line:{ 2} cursor_column:{ 1} mark_line:{ 2} mark_column:{1} }
+        call_stack: {selected project:{"default.raddbg_project"} }
+        targets: {project:{"default.raddbg_project"} }
+        breakpoints: {project:{"default.raddbg_project"} }
+      }
+      0.5:
+      {
+        disasm: {selected project:{"default.raddbg_project"} }
+      }
+    }
+  }
+}
+
+/// keybindings ///////////////////////////////////////////////////////////////
+
+keybindings:
+{
+  {"accept"                                  return              }
+  {"add_target"                              ctrl t              }
+  {"attach"                                  shift f6            }
+  {"backspace_chunk"                         ctrl backspace      }
+  {"backspace_single"                        backspace           }
+  {"cancel"                                  esc                 }
+  {"close_panel"                             ctrl shift alt p    }
+  {"close_tab"                               ctrl w              }
+  {"copy"                                    ctrl c              }
+  {"copy"                                    ctrl insert         }
+  {"cut"                                     ctrl x              }
+  {"dec_code_font_scale"                     shift alt minus     }
+  {"dec_ui_font_scale"                       alt minus           }
+  {"delete_chunk"                            ctrl delete         }
+  {"delete_single"                           delete              }
+  {"edit"                                    f2                  }
+  {"filter"                                  ctrl slash          }
+  {"find_next"                               f3                  }
+  {"find_prev"                               ctrl f3             }
+  {"find_selected_thread"                    f4                  }
+  {"find_text_backward"                      ctrl r              }
+  {"find_text_forward"                       ctrl f              }
+  {"focus_panel_down"                        ctrl alt down       }
+  {"focus_panel_left"                        ctrl alt left       }
+  {"focus_panel_right"                       ctrl alt right      }
+  {"focus_panel_up"                          ctrl alt up         }
+  {"go_back"                                 alt left            }
+  {"go_forward"                              alt right           }
+  {"goto_address"                            alt g               }
+  {"goto_line"                               ctrl g              }
+  {"goto_name"                               ctrl j              }
+  {"goto_name_at_cursor"                     f12                 }
+  {"halt"                                    ctrl shift x        }
+  {"halt"                                    pause               }
+  {"inc_code_font_scale"                     shift alt equal     }
+  {"inc_ui_font_scale"                       alt equal           }
+  {"kill_all"                                shift f5            }
+  {"log_marker"                              ctrl shift alt m    }
+  {"move_down_chunk_select"                  ctrl shift down     }
+  {"move_down_chunk"                         ctrl down           }
+  {"move_down"                               down                }
+  {"move_down_page"                          page_down           }
+  {"move_down_page_select"                   shift page_down     }
+  {"move_down_reorder"                       alt down            }
+  {"move_down_select"                        shift down          }
+  {"move_down_whole_select"                  ctrl shift end      }
+  {"move_down_whole"                         ctrl end            }
+  {"move_end_select"                         shift end           }
+  {"move_end"                                end                 }
+  {"move_home"                               home                }
+  {"move_home_select"                        shift home          }
+  {"move_left_chunk_select"                  ctrl shift left     }
+  {"move_left"                               left                }
+  {"move_left_chunk"                         ctrl left           }
+  {"move_left_select"                        shift left          }
+  {"move_right"                              right               }
+  {"move_right_chunk"                        ctrl right          }
+  {"move_right_chunk_select"                 ctrl shift right    }
+  {"move_right_select"                       shift right         }
+  {"move_tab_left"                           ctrl shift page_up  }
+  {"move_tab_right"                          ctrl shift page_down}
+  {"move_up_chunk_select"                    ctrl shift up       }
+  {"move_up_chunk"                           ctrl up             }
+  {"move_up"                                 up                  }
+  {"move_up_reorder"                         alt up              }
+  {"move_up_select"                          shift up            }
+  {"move_up_whole"                           ctrl home           }
+  {"move_up_page"                            page_up             }
+  {"move_up_page_select"                     shift page_up       }
+  {"move_up_whole_select"                    ctrl shift home     }
+  {"new_panel_down"                          ctrl minus          }
+  {"new_panel_right"                         ctrl p              }
+  {"next_panel"                              ctrl comma          }
+  {"next_tab"                                ctrl page_down      }
+  {"next_tab"                                ctrl tab            }
+  {"open_project"                            ctrl alt o          }
+  {"open"                                    ctrl o              }
+  {"open_user"                               ctrl shift alt o    }
+  {"paste"                                   shift insert        }
+  {"paste"                                   ctrl v              }
+  {"prev_panel"                              ctrl shift comma    }
+  {"prev_tab"                                ctrl shift tab      }
+  {"prev_tab"                                ctrl page_up        }
+  {"redo"                                    ctrl y              }
+  {"reload_active"                           ctrl shift r        }
+  {"restart"                                 ctrl shift f5       }
+  {"rotate_panel_columns"                    ctrl 2              }
+  {"run_to_cursor"                           ctrl f10            }
+  {"run"                                     f5                  }
+  {"select_all"                              ctrl a              }
+  {"set_next_statement"                      ctrl shift f10      }
+  {"soft_halt_refresh"                       alt r               }
+  {"step_into"                               f11                 }
+  {"step_into_inst"                          alt f11             }
+  {"step_out"                                shift f11           }
+  {"step_over_inst"                          alt f10             }
+  {"step_over"                               f10                 }
+  {"switch"                                  ctrl i              }
+  {"switch_to_partner_file"                  alt o               }
+  {"tab_bar_bottom"                          ctrl shift alt down }
+  {"tab_bar_top"                             ctrl shift alt up   }
+  {"toggle_breakpoint"                       f9                  }
+  {"toggle_fullscreen"                       ctrl return         }
+  {"toggle_watch_expr_at_cursor"             alt w               }
+  {"toggle_watch_expr_at_mouse"              ctrl d              }
+  {"toggle_watch_pin"                        ctrl f9             }
+  {"undo"                                    ctrl z              }
+  {"window"                                  ctrl shift n        }
+}
+
+/// colors ////////////////////////////////////////////////////////////////////
+
+color_preset: "default_dark"
+
+/// fonts /////////////////////////////////////////////////////////////////////
+
+code_font: ""
+main_font: ""
+
+/// global settings ///////////////////////////////////////////////////////////
+
+hover_animations: 1
+press_animations: 1
+focus_animations: 0
+tooltip_animations: 1
+menu_animations: 1
+scrolling_animations: 1
+background_blur: 1
+thread_lines: 1
+breakpoint_lines: 1
+thread_glow: 1
+breakpoint_glow: 1
+opaque_backgrounds: 0
+tab_width: 4
+
