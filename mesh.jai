@@ -36,8 +36,8 @@ create_mesh :: (name: string, data: Mesh_Data) -> *Mesh {
     if data.positions.count <= 0 return fallback_mesh;
 
     mesh: Mesh;
-    mesh.name = name;
-    mesh.positions = data.positions;
+    mesh.name = push_string(mesh_arena, name);
+    mesh.positions = push_view(mesh_arena, data.positions);
 
     if data.indices.count > 0 {
         mesh.num_indices = data.indices.count;
@@ -180,6 +180,16 @@ init_mesh_system :: () {
     cube_mesh = create_mesh("cube", cube_data);
 }
 
+recreate_mesh :: (mesh: *Mesh, data: Mesh_Data) {
+	SDL_ReleaseGPUBuffer(context.device, mesh.position_buffer);
+	SDL_ReleaseGPUBuffer(context.device, mesh.colour_buffer);
+	SDL_ReleaseGPUBuffer(context.device, mesh.tex_coord_buffer);
+	SDL_ReleaseGPUBuffer(context.device, mesh.normal_buffer);
+	SDL_ReleaseGPUBuffer(context.device, mesh.tangent_buffer);
+
+	create_buffers(mesh, data);
+}
+
 cube_mesh: *Mesh;
 
 #scope_file
@@ -194,9 +204,16 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
     generate_normals := true;
     generate_tangents := true;
 
-    if data.positions.count % 3 != 0 {
-        generate_normals = false;
-        generate_tangents = false;
+    if data.indices.count > 0 {
+        if data.indices.count % 3 != 0 {
+            generate_normals = false;
+            generate_tangents = false;
+        }
+    } else {
+        if data.positions.count % 3 != 0 {
+            generate_normals = false;
+            generate_tangents = false;
+        }
     }
 
     mesh.position_buffer = create_vertex_buffer(tprint("%_positions", mesh.name), data.positions);
@@ -253,10 +270,10 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
                 e1 := p1 - p0;
                 e2 := p2 - p0;
 
-                n := cross_product(e1, e2);
-                normals[it*3 + 0] = n;
-                normals[it*3 + 1] = n;
-                normals[it*3 + 2] = n;
+                n := normalize(cross_product(e1, e2));
+                normals[i0] = n;
+                normals[i1] = n;
+                normals[i2] = n;
             }
         } else {
             for * normals it.* = .{0, 0, 1};
@@ -298,13 +315,13 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
                 n1 := normals[i1];
                 n2 := normals[i2];
 
-                t0 := cross_product(n0, e1);
-                t1 := cross_product(n1, e1);
-                t2 := cross_product(n2, e1);
+                t0 := normalize(cross_product(n0, e1));
+                t1 := normalize(cross_product(n1, e1));
+                t2 := normalize(cross_product(n2, e1));
 
-                tangents[it*3 + 0] = t0;
-                tangents[it*3 + 1] = t1;
-                tangents[it*3 + 2] = t2;
+                tangents[i0] = t0;
+                tangents[i1] = t1;
+                tangents[i2] = t2;
             }
         } else {
             for * tangents it.* = .{1, 0, 0};

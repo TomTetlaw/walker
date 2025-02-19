@@ -16,7 +16,7 @@ Entity :: struct {
     spawned_this_frame: bool;
 
     default_mesh_name: string;
-    default_texture_names: [] string;
+    default_texture_names: [8] string;
 
     mesh: *Mesh;
     textures: [] *Texture;
@@ -50,10 +50,14 @@ make_entity :: ($T: Type) -> *T {
     entity.entity = entity;
 
     entity.mesh = load_mesh(entity.default_mesh_name);
-    entity.textures = push_view(entity_arena, *Texture, entity.default_texture_names.count);
+
+    textures := push_array(entity_arena, *Texture);
     for entity.default_texture_names {
-        entity.textures[it_index] = load_texture(it);
+        if it.count > 0 array_add(*textures, load_texture(it));
     }
+
+    entity.textures = push_view(entity_arena, *Texture, textures.count);
+    for textures entity.textures[it_index] = it;
 
     next_entity_id += 1;
     total_entity_count += 1;
@@ -107,8 +111,7 @@ render_entities :: (batcher: *Render_Batcher) {
         command: Render_Command;
         command.mesh = it.mesh;
         command.textures = it.textures;
-        command.transform = mat4_translation(it.draw_p) *
-            mat4_rotation(it.rotation) * mat4_scale(it.scale);
+        command.transform = mat4_translation(it.draw_p) * mat4_scale(it.scale) * mat4_rotation(it.rotation);
         add_render_command(batcher, command);
     }
 }

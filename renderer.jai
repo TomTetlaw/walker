@@ -27,13 +27,18 @@ Render_Batcher :: struct {
 
 MAX_BATCHES :: 1024;
 
+init_render_batcher :: (batcher: *Render_Batcher) {
+    batcher.batch_arena = make_arena();
+    batcher.data_arena = make_arena();
+    batcher.hash_map = push_view(batcher.data_arena, *Render_Batch, MAX_BATCHES);
+}
+
 free_render_batcher :: (batcher: *Render_Batcher) {
     free_arena(batcher.batch_arena);
     free_arena(batcher.data_arena);
 }
 
 make_batches :: (batcher: Render_Batcher) -> [] Render_Batch {
-    if !batcher.batch_arena return .[];
     batches := arena_to_view(batcher.batch_arena, Render_Batch);
     return batches;
 }
@@ -45,12 +50,6 @@ Render_Command :: struct {
 }
 
 add_render_command :: (batcher: *Render_Batcher, command: Render_Command) {
-    if !batcher.batch_arena {
-        batcher.batch_arena = make_arena();
-        batcher.data_arena = make_arena();
-        batcher.hash_map = push_view(batcher.data_arena, *Render_Batch, MAX_BATCHES);
-    }
-
     if batcher.instance_count >= MAX_INSTANCES return;
 
     hash := get_hash(command.mesh.name);
@@ -122,6 +121,9 @@ Render_Scene :: struct {
 }
 
 render_scene :: (scene: Render_Scene) {
+    batches := make_batches(scene.mesh_batcher);
+    defer free_render_batcher(*scene.mesh_batcher);
+
     command_buffer := SDL_AcquireGPUCommandBuffer(context.device);
 
     swap_texture: *SDL_GPUTexture;
@@ -130,9 +132,6 @@ render_scene :: (scene: Render_Scene) {
         SDL_CancelGPUCommandBuffer(command_buffer);
         return;
     }
-
-    batches := make_batches(scene.mesh_batcher);
-    defer free_render_batcher(*scene.mesh_batcher);
 
     if batches.count > 0 {
         mapping := cast(*Instance_Data) SDL_MapGPUTransferBuffer(context.device, instance_transfer_buffer, false);
@@ -208,7 +207,7 @@ init_renderer :: () {
         cull_mode = .SDL_GPU_CULLMODE_BACK,
         fill_mode = .SDL_GPU_FILLMODE_FILL,
         shader_name = "static_mesh",
-        needed_textures = 1
+        needed_textures = 2
     };
 
     mesh_pipeline = create_pipeline("mesh_render_pipeline", mesh_pipeline_options);

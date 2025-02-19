@@ -34,7 +34,9 @@ Vec4 :: struct {
 
 v2 :: (xy: float) -> Vec2 { return .{xy, xy}; }
 v3 :: (xyz: float) -> Vec3 { return .{xyz, xyz, xyz}; }
+v3 :: (xy: Vec2, z: float) -> Vec3 { return .{xy.x, xy.y, z}; }
 v4 :: (xyzw: float) -> Vec4 { return .{xyzw, xyzw, xyzw, xyzw}; }
+v4 :: (xy: Vec2, z: float, w: float) -> Vec4 { return .{xy.x, xy.y, z, w}; }
 v4 :: (xyz: Vec3, w: float) -> Vec4 { return .{xyz.x, xyz.y, xyz.z, w}; }
 
 operator *[] :: (v: *Vec2, $i: int) -> *float {
@@ -89,22 +91,22 @@ length :: inline (v: Vec4) -> float { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z + 
 
 normalize :: (v: Vec2, fallback := Vec2.{}) -> Vec2 {
     len := length(v);
+    if len == 0.0 return fallback;
     inv_length := 1.0 / len;
-    if inv_length == 0.0 return fallback;
     return .{v.x * inv_length, v.y * inv_length};
 }
 
-normalize :: (v: Vec3, fallback := Vec3.{}) -> Vec3 {
+normalize :: (v: Vec3, fallback := Vec3.{0, 0, 1}) -> Vec3 {
     len := length(v);
+    if len == 0.0 return fallback;
     inv_length := 1.0 / len;
-    if inv_length == 0.0 return fallback;
     return .{v.x * inv_length, v.y * inv_length, v.z * inv_length};
 }
 
 normalize :: (v: Vec4, fallback := Vec4.{}) -> Vec4 {
     len := length(v);
+    if len == 0.0 return fallback;
     inv_length := 1.0 / len;
-    if inv_length == 0.0 return fallback;
     return .{v.x * inv_length, v.y * inv_length, v.z * inv_length, v.w * inv_length};
 }
 

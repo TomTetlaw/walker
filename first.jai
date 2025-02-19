@@ -19,7 +19,9 @@ build :: () {
     array_add(*imports, "Hash");
     array_add(*imports, "File_Watcher");
     array_add(*imports, "System");
-
+    array_add(*imports, "Random");
+    array_add(*imports, "fastnoise_jai");
+    
 #if OS == .WINDOWS array_add(*imports, "Windows");
     else #if OS == .LINUX array_add(*imports, "POSIX");
 

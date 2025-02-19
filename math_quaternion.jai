@@ -2,7 +2,7 @@
 Quaternion :: struct {
     x, y, z:  float;
     w := 1.0;
-    
+
 #place x;
     xyz: Vec3;
 }
@@ -36,12 +36,12 @@ normalize :: (q: Quaternion, fallback := Quaternion.{}) -> Quaternion {
 
 lerp :: (a: Quaternion, b: Quaternion, t: float) -> Quaternion {
     result: Quaternion = ---;
-    
+
     result.x = a.x + t * (b.x - a.x);
     result.y = a.y + t * (b.y - a.y);
     result.z = a.z + t * (b.z - a.z);
     result.w = a.w + t * (b.w - a.w);
-    
+
     return result;
 }
 
@@ -64,7 +64,7 @@ rotate :: (v: Vec3, q: Quaternion) -> Vec3 {
 quat_from_axis_angle :: (axis: Vec3, turns: float) -> Quaternion {
     s := sin_turns(turns * 0.5);
     c := cos_turns(turns * 0.5);
-    
+
     return .{
         axis.x * s,
         axis.y * s,
@@ -76,21 +76,21 @@ quat_from_axis_angle :: (axis: Vec3, turns: float) -> Quaternion {
 operator * :: (a: Quaternion, b: Quaternion) -> Quaternion {
     v := a.xyz;
     av := b.xyz;
-    
+
     r: Quaternion;
     r.w = a.w * b.w - dot_product(v, av);
-    
+
     rv := cross_product(v, av);
-    
+
     av *= a.w;
     v  *= b.w;
-    
+
     rv = rv + av + v;
-    
+
     r.x = rv.x;
     r.y = rv.y;
     r.z = rv.z;
-    
+
     return r;
 }
 

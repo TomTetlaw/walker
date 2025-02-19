@@ -10,9 +10,22 @@ watch_pin:
 
 /// watches ///////////////////////////////////////////////////////////////////
 
-watch: "arena_free_list"
-watch: "batch.vertex_buffers.data,5"
-watch: "batch.textures.data,4"
+watch: "n"
+watch: "normals.data,normals.count"
+watch: "elements.data,elements.count"
+watch: "(Vec3*)mapping,elements.count"
+
+/// breakpoints ///////////////////////////////////////////////////////////////
+
+breakpoint:
+{
+  location: ("mesh.jai":248)
+}
+
+breakpoint:
+{
+  location: ("mesh.jai":283)
+}
 
 /// targets ///////////////////////////////////////////////////////////////////
 
@@ -116,17 +129,21 @@ recent_file: "C:/jai/modules/math/module.jai"
 recent_file: "C:/jai/modules/basic/int128.jai"
 recent_file: "C:/jai/modules/windows.jai"
 recent_file: "C:/jai/modules/file_watcher/module.jai"
+recent_file: "texture.jai"
+recent_file: "physics.jai"
+recent_file: "entity.jai"
 recent_file: "shader.jai"
+recent_file: "math_quaternion.jai"
+recent_file: "arena.jai"
+recent_file: "renderer.jai"
+recent_file: "C:/jai/modules/hash.jai"
+recent_file: "C:/jai/modules/runtime_support.jai"
+recent_file: "math_vector.jai"
 recent_file: "C:/jai/modules/basic/print.jai"
 recent_file: "gpu.jai"
 recent_file: "mesh.jai"
-recent_file: "texture.jai"
-recent_file: "math_vector.jai"
-recent_file: "entity.jai"
-recent_file: "physics.jai"
+recent_file: "terrain.jai"
 recent_file: "main.jai"
-recent_file: "arena.jai"
-recent_file: "renderer.jai"
 
 /// exception code filters ////////////////////////////////////////////////////
 

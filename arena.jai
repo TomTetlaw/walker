@@ -139,6 +139,18 @@ push_value :: (arena: *Arena, value: $T) {
     memcpy(result, *value, size_of(T));
 }
 
+push_string :: (arena: *Arena, value: string) -> string {
+    result := cast(*u8) arena_alloc(arena, value.count);
+    if !result return "";
+
+    memcpy(result, value.data, value.count);
+
+    s: string;
+    s.data = result;
+    s.count = value.count;
+    return s;
+}
+
 push_struct :: (arena: *Arena, $T: Type, stub: *T) -> *T {
     result := cast(*T) arena_alloc(arena, size_of(T));
 
@@ -169,7 +181,9 @@ push_array :: (arena: *Arena, $T: Type, reserve := 0) -> [..] T {
 
 push_view :: (arena: *Arena, $T: Type, count: int) -> [] T {
     data := cast(*T) arena_alloc(arena, size_of(T) * count);
-    if !data return .[];
+    if !data {
+        return .[];
+    }
 
     result: [] T;
     result.data = data;

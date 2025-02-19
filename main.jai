@@ -24,6 +24,7 @@ Test_Entity :: struct {
     next, prev: *Test_Entity;
 
     default_mesh_name = "cube";
+    default_texture_names[0] = "uv_check";
 }
 
 main :: () {
@@ -86,13 +87,16 @@ main :: () {
     init_renderer();
     init_mesh_system();
     init_entity_system();
+    init_terrain_system();
 
     camera: Flying_Camera;
 
     e := make_entity(Test_Entity);
-    e.p = .{25, 0, 0};
+    e.p = .{5, 0, 0};
 
     spawn_entity(e);
+
+    terrain := create_terrain(v2(5000), 10);
 
     old_time := current_time_monotonic();
     while main_loop := true {
@@ -146,32 +150,43 @@ main :: () {
 
         update_entities();
 
+        yaw := quat_from_axis_angle(.{0, 0, 1}, game_delta*0.01);
+        pitch := quat_from_axis_angle(.{1, 0, 0}, game_delta*0.01);
+        rotation := yaw * pitch;
+
         for * :active_entities _Test_Entity {
             cycle := fmod_cycling(game_time, 5.0);
             if cycle < 2.5 {
-                it.ddp = .{0.0, 1.0, 0.0};
+                it.dp = .{0.0, 0.3, 0.0};
             } else {
-                it.ddp = .{0.0, -2.0, 0.0};
+                it.dp = .{0.0, -0.3, 0.0};
             }
 
+            it.rotation *= rotation;
+
             if game_time > 10.0 {
-                remove_entity(it);
+                // remove_entity(it);
             }
         }
 
         //~ render
 
         mesh_batcher: Render_Batcher;
+        init_render_batcher(*mesh_batcher);
+
         render_entities(*mesh_batcher);
+        render_terrain(*mesh_batcher, terrain, .[]);
 
         vert_constants: Mesh_Vertex_Constants;
         vert_constants.view = camera.view;
         vert_constants.projection = camera.projection;
 
         frag_constants: Mesh_Fragment_Constants;
+        frag_constants.material_params = v4(v2(10000.0), 0, 0);
         frag_constants.camera_position = v4(camera.position, 0.0);
-        frag_constants.directional_light_dir = .{0, 0, -1, 0};
+        frag_constants.directional_light_dir = .{.5, 0, -.125, 0};
         frag_constants.directional_light_colour = rgba(1.0);
+        frag_constants.light_params = .{0.3, 1.0, 1.0, 2.0};
 
         scene: Render_Scene;
         scene.mesh_batcher = mesh_batcher;
