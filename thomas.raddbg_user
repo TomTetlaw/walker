@@ -76,12 +76,12 @@ window:
       text: {project:{"default.raddbg_project"} query:{"file:\"../../../../../jai/modules/basic/module.jai\""} cursor_line:{ 117} cursor_column:{ 28} mark_line:{ 117} mark_column:{28} }
       text: {project:{"default.raddbg_project"} query:{"file:\"../../../../../jai/modules/basic/array.jai\""} cursor_line:{ 260} cursor_column:{ 1} mark_line:{ 260} mark_column:{1} }
       text: {project:{"default.raddbg_project"} query:{"file:\"input.jai\""} cursor_line:{ 62} cursor_column:{ 1} mark_line:{ 62} mark_column:{1} }
-      text: {selected project:{"walker.raddbg_project"} query:{"file:\"main.jai\""} cursor_line:{ 101} cursor_column:{ 1} mark_line:{ 101} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"main.jai\""} cursor_line:{ 101} cursor_column:{ 1} mark_line:{ 101} mark_column:{1} }
       text: {project:{"walker.raddbg_project"} query:{"file:\"shader.jai\""} cursor_line:{ 202} cursor_column:{ 1} mark_line:{ 202} mark_column:{1} }
       text: {project:{"walker.raddbg_project"} query:{"file:\"texture.jai\""} cursor_line:{ 53} cursor_column:{ 1} mark_line:{ 53} mark_column:{1} }
       text: {project:{"walker.raddbg_project"} query:{"file:\"gpu.jai\""} cursor_line:{ 25} cursor_column:{ 1} mark_line:{ 25} mark_column:{1} }
       text: {project:{"walker.raddbg_project"} query:{"file:\"renderer.jai\""} cursor_line:{ 55} cursor_column:{ 1} mark_line:{ 55} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"mesh.jai\""} cursor_line:{ 60} cursor_column:{ 1} mark_line:{ 60} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"mesh.jai\""} cursor_line:{ 283} cursor_column:{ 1} mark_line:{ 283} mark_column:{1} }
       text: {project:{"walker.raddbg_project"} query:{"file:\"math_vector.jai\""} cursor_line:{ 200} cursor_column:{ 1} mark_line:{ 200} mark_column:{1} }
       text: {project:{"walker.raddbg_project"} query:{"file:\"arena.jai\""} cursor_line:{ 111} cursor_column:{ 1} mark_line:{ 111} mark_column:{1} }
       text: {project:{"walker.raddbg_project"} query:{"file:\"C:/jai/modules/basic/print.jai\""} cursor_line:{ 346} cursor_column:{ 1} mark_line:{ 346} mark_column:{1} }
@@ -91,7 +91,8 @@ window:
       text: {project:{"walker.raddbg_project"} query:{"file:\"math_quaternion.jai\""} cursor_line:{ 30} cursor_column:{ 1} mark_line:{ 30} mark_column:{1} }
       text: {project:{"walker.raddbg_project"} query:{"file:\"C:/jai/modules/runtime_support.jai\""} cursor_line:{ 472} cursor_column:{ 1} mark_line:{ 472} mark_column:{1} }
       text: {project:{"walker.raddbg_project"} query:{"file:\"C:/jai/modules/hash.jai\""} cursor_line:{ 90} cursor_column:{ 1} mark_line:{ 90} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"terrain.jai\""} cursor_line:{ 18} cursor_column:{ 1} mark_line:{ 18} mark_column:{1} }
+      text: {selected project:{"walker.raddbg_project"} query:{"file:\"terrain.jai\""} cursor_line:{ 118} cursor_column:{ 1} mark_line:{ 118} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"noise.jai\""} cursor_line:{ 48} cursor_column:{ 42} mark_line:{ 48} mark_column:{42} }
     }
     0.251359:
     {
@@ -192,11 +193,11 @@ keybindings:
   {"open_project"                            ctrl alt o          }
   {"open"                                    ctrl o              }
   {"open_user"                               ctrl shift alt o    }
-  {"paste"                                   shift insert        }
   {"paste"                                   ctrl v              }
+  {"paste"                                   shift insert        }
   {"prev_panel"                              ctrl shift comma    }
-  {"prev_tab"                                ctrl shift tab      }
   {"prev_tab"                                ctrl page_up        }
+  {"prev_tab"                                ctrl shift tab      }
   {"redo"                                    ctrl y              }
   {"reload_active"                           ctrl shift r        }
   {"restart"                                 ctrl shift f5       }

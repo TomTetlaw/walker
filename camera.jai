@@ -1,49 +1,52 @@
-
 Flying_Camera :: struct {
-  FLY_SPEED :: 10.0;
-  ROTATION_SPEED :: 0.3;
-  ROTATION_SMOOTHING :: 0.3;
+    FLY_SPEED :: 10.0;
+    ROTATION_SPEED :: 0.3;
+    ROTATION_SMOOTHING :: 0.3;
 
-  yaw, pitch: float;
-  rotation_input: Vec2;
+    yaw, pitch: float;
+    rotation_input: Vec2;
 
-  position: Vec3;
-  rotation: Quaternion;
+    position: Vec3;
+    rotation: Quaternion;
 
-  transform: Mat4;
-  view: Mat4;
-  projection: Mat4;
+    transform: Mat4;
+    view: Mat4;
+    projection: Mat4;
 
-  near_plane := 0.1;
-  far_plane := 1000.0;
+    near_plane := 0.1;
+    far_plane := 50000.0;
 }
 
 flying_camera_apply_input :: (camera: *Flying_Camera, input: Frame_Input) {
-  move_speed := Flying_Camera.FLY_SPEED;
+    move_speed := Flying_Camera.FLY_SPEED;
 
-  move_input: Vec3;
-  move_input.x = key_state(input, .W) - key_state(input, .S);
-  move_input.y = key_state(input, .A) - key_state(input, .D);
-  move_input.z = key_state(input, .E) - key_state(input, .Q);
-  move_input = rotate(move_input, camera.rotation);
-  camera.position += move_input * move_speed * real_delta;
+    if key_state(input, .LSHIFT) {
+        move_speed *= 100.0;
+    }
 
-  camera.rotation_input = lerp(camera.rotation_input, input.mouse_delta, Flying_Camera.ROTATION_SMOOTHING);
-  delta := camera.rotation_input * camera.ROTATION_SPEED;
+    move_input: Vec3;
+    move_input.x = key_state(input, .W) - key_state(input, .S);
+    move_input.y = key_state(input, .A) - key_state(input, .D);
+    move_input.z = key_state(input, .E) - key_state(input, .Q);
+    move_input = rotate(move_input, camera.rotation);
+    camera.position += move_input * move_speed * real_delta;
 
-  camera.yaw += delta.x*deg2turn;
-  camera.pitch += delta.y*deg2turn;
-  camera.pitch = clamp(camera.pitch, -0.25, 0.25);
+    camera.rotation_input = lerp(camera.rotation_input, input.mouse_delta, Flying_Camera.ROTATION_SMOOTHING);
+    delta := camera.rotation_input * camera.ROTATION_SPEED;
 
-  yaw := quat_from_axis_angle(.{0, 0, -1}, camera.yaw);
-  pitch := quat_from_axis_angle(.{0, 1, 0}, camera.pitch);
-  camera.rotation = yaw * pitch;
+    camera.yaw += delta.x*deg2turn;
+    camera.pitch += delta.y*deg2turn;
+    camera.pitch = clamp(camera.pitch, -0.25, 0.25);
 
-  camera.transform = mat4_translation(camera.position) * mat4_rotation(camera.rotation);
-  camera.view = mat4_inverse(camera.transform);
+    yaw := quat_from_axis_angle(.{0, 0, -1}, camera.yaw);
+    pitch := quat_from_axis_angle(.{0, 1, 0}, camera.pitch);
+    camera.rotation = yaw * pitch;
 
-  aspect := context.viewport.x / context.viewport.y;
-  camera.projection = mat4_projection(0.125, aspect, camera.near_plane, camera.far_plane);
+    camera.transform = mat4_translation(camera.position) * mat4_rotation(camera.rotation);
+    camera.view = mat4_inverse(camera.transform);
+
+    aspect := context.viewport.x / context.viewport.y;
+    camera.projection = mat4_projection(0.125, aspect, camera.near_plane, camera.far_plane);
 }
 
 #scope_file

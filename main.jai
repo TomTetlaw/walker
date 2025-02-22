@@ -96,7 +96,18 @@ main :: () {
 
     spawn_entity(e);
 
-    terrain := create_terrain(v2(5000), 10);
+    opts: Terrain_Options;
+    opts.subdivisions = 9;
+    opts.size = v2(10000.0);
+    opts.height_scale = 1000.0;
+
+    opts.noise_seed = to_milliseconds(current_time_monotonic());
+    opts.noise_octaves = 25;
+    opts.noise_persistence = .5;
+    opts.noise_scale = .007;
+    opts.noise_power = 6.0;
+
+    terrain := create_terrain(opts);
 
     old_time := current_time_monotonic();
     while main_loop := true {
@@ -182,10 +193,10 @@ main :: () {
         vert_constants.projection = camera.projection;
 
         frag_constants: Mesh_Fragment_Constants;
-        frag_constants.material_params = v4(v2(10000.0), 0, 0);
         frag_constants.camera_position = v4(camera.position, 0.0);
-        frag_constants.directional_light_dir = .{.5, 0, -.125, 0};
-        frag_constants.directional_light_colour = rgba(1.0);
+        frag_constants.view_dir = v4(camera.view[3].xyz, 0.0);
+        frag_constants.directional_light_dir = .{0.0, -0.94, -0.30, 0};
+        frag_constants.directional_light_colour = .{1.0, 0.9, 0.7, 1.0};
         frag_constants.light_params = .{0.3, 1.0, 1.0, 2.0};
 
         scene: Render_Scene;

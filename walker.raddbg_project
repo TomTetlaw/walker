@@ -14,17 +14,13 @@ watch: "n"
 watch: "normals.data,normals.count"
 watch: "elements.data,elements.count"
 watch: "(Vec3*)mapping,elements.count"
+watch: "(u64*)perlin_lookup,512"
 
 /// breakpoints ///////////////////////////////////////////////////////////////
 
 breakpoint:
 {
-  location: ("mesh.jai":248)
-}
-
-breakpoint:
-{
-  location: ("mesh.jai":283)
+  location: ("terrain.jai":118)
 }
 
 /// targets ///////////////////////////////////////////////////////////////////
@@ -137,13 +133,14 @@ recent_file: "math_quaternion.jai"
 recent_file: "arena.jai"
 recent_file: "renderer.jai"
 recent_file: "C:/jai/modules/hash.jai"
-recent_file: "C:/jai/modules/runtime_support.jai"
 recent_file: "math_vector.jai"
 recent_file: "C:/jai/modules/basic/print.jai"
 recent_file: "gpu.jai"
-recent_file: "mesh.jai"
-recent_file: "terrain.jai"
 recent_file: "main.jai"
+recent_file: "mesh.jai"
+recent_file: "C:/jai/modules/runtime_support.jai"
+recent_file: "noise.jai"
+recent_file: "terrain.jai"
 
 /// exception code filters ////////////////////////////////////////////////////
 

@@ -2,6 +2,7 @@
 Instance_Data :: struct {
     transform := mat4_identity;
     colour := #run rgba(1.0);
+    material_params := Vec4.{1, 1, 0, 0};
 }
 
 Render_Batch :: struct {
@@ -13,6 +14,8 @@ Render_Batch :: struct {
     index_buffer: SDL_GPUBufferBinding;
 
     textures: [] SDL_GPUTextureSamplerBinding;
+
+    pipeline: *Pipeline;
 
     num_indices: int;
     num_instances: int;
@@ -43,7 +46,13 @@ make_batches :: (batcher: Render_Batcher) -> [] Render_Batch {
     return batches;
 }
 
+Mesh_Shader :: enum {
+    STATIC_MESH;
+    TERRAIN;
+}
+
 Render_Command :: struct {
+    shader: Mesh_Shader;
     mesh: *Mesh;
     textures: [] *Texture;
     using instance: Instance_Data;
@@ -52,7 +61,16 @@ Render_Command :: struct {
 add_render_command :: (batcher: *Render_Batcher, command: Render_Command) {
     if batcher.instance_count >= MAX_INSTANCES return;
 
-    hash := get_hash(command.mesh.name);
+    pipeline: *Pipeline;
+    if command.shader == {
+        case .STATIC_MESH;
+        pipeline = mesh_pipeline;
+        case .TERRAIN;
+        pipeline = terrain_pipeline;
+    }
+
+    hash := get_hash(pipeline.name);
+    hash = get_hash(command.mesh.name, hash);
     for command.textures {
         hash = get_hash(it.name, hash);
     }
@@ -64,6 +82,8 @@ add_render_command :: (batcher: *Render_Batcher, command: Render_Command) {
         if batch == *stub_batch {
             return;
         }
+
+        batch.pipeline = pipeline;
 
         batch.instances = push_array(batcher.data_arena, Instance_Data, 32);
 
@@ -100,9 +120,7 @@ Mesh_Vertex_Constants :: struct {
 
 Mesh_Fragment_Constants :: struct {
     camera_position: Vec4;
-
-    // xy = tex coord scale
-    material_params := Vec4.{1, 1, 0, 0};
+    view_dir: Vec4;
 
     // x = ambient lighting
     // y = diffuse intensity
@@ -158,7 +176,7 @@ render_scene :: (scene: Render_Scene) {
 
     colour_target := SDL_GPUColorTargetInfo.{
         texture = swap_texture,
-        clear_color = .{0, 0, 0, 1},
+        clear_color = .{.6, .6, .6, 1},
         load_op = .SDL_GPU_LOADOP_CLEAR,
         store_op = .SDL_GPU_STOREOP_STORE,
     };
@@ -172,16 +190,17 @@ render_scene :: (scene: Render_Scene) {
 
     render_pass := SDL_BeginGPURenderPass(command_buffer, *colour_target, 1, *depth_target);
 
-    SDL_BindGPUGraphicsPipeline(render_pass, mesh_pipeline.pipeline_object);
 
     shadow_binding := SDL_GPUTextureSamplerBinding.{shadow_texture, shadow_sampler};
 
     SDL_PushGPUVertexUniformData(command_buffer, 0, *scene.mesh_vert_constants, size_of(Mesh_Vertex_Constants));
     SDL_PushGPUFragmentUniformData(command_buffer, 0, *scene.mesh_frag_constants, size_of(Mesh_Fragment_Constants));
-    SDL_BindGPUVertexStorageBuffers(render_pass, 0, *instance_buffer, 1);
 
     base_instance := 0;
     for batch: batches {
+        SDL_BindGPUGraphicsPipeline(render_pass, batch.pipeline.pipeline_object);
+
+        SDL_BindGPUVertexStorageBuffers(render_pass, 0, *instance_buffer, 1);
         SDL_BindGPUVertexBuffers(render_pass, 0, batch.vertex_buffers.data, xx batch.vertex_buffers.count);
         SDL_BindGPUIndexBuffer(render_pass, *batch.index_buffer, .SDL_GPU_INDEXELEMENTSIZE_32BIT);
         // SDL_BindGPUFragmentSamplers(render_pass, 0, *shadow_binding, 1);
@@ -211,6 +230,11 @@ init_renderer :: () {
     };
 
     mesh_pipeline = create_pipeline("mesh_render_pipeline", mesh_pipeline_options);
+
+    terrain_pipeline_options := mesh_pipeline_options;
+    terrain_pipeline_options.shader_name = "terrain";
+
+    terrain_pipeline = create_pipeline("terrain_render_pipeline", terrain_pipeline_options);
 
     mesh_depth_create_info := SDL_GPUTextureCreateInfo.{
         type = .SDL_GPU_TEXTURETYPE_2D,
@@ -312,6 +336,7 @@ renderer_arena: *Arena;
 
 pipelines: Bucket_Array(Pipeline);
 mesh_pipeline: *Pipeline;
+terrain_pipeline: *Pipeline;
 
 default_texture: *Texture;
 

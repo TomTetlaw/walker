@@ -2,12 +2,29 @@
 Terrain :: struct {
     meshes: [] Terrain_Mesh;
     transform := mat4_identity;
+    size: Vec2;
 }
 
-create_terrain :: (size: Vec2, subdivisions: int) -> Terrain {
-    mesh := create_terrain_mesh(size, subdivisions);
+Terrain_Options :: struct {
+    subdivisions: int;
+    size: Vec2;
+
+    height_scale: float;
+
+    noise_seed: int;
+    noise_origin: Vec2;
+    noise_persistence: float;
+    noise_octaves: int;
+    noise_scale: float;
+    noise_power: float;
+}
+
+create_terrain :: (opts: Terrain_Options) -> Terrain {
+    mesh := create_terrain_mesh(opts);
 
     terrain: Terrain;
+    terrain.size = opts.size;
+
     terrain.meshes = push_view(terrain_arena, Terrain_Mesh, 1);
 
     terrain_mesh: Terrain_Mesh;
@@ -26,12 +43,14 @@ Terrain_Layer :: struct {
 render_terrain :: (batcher: *Render_Batcher, terrain: Terrain, layers: [] Terrain_Layer) {
     for terrain.meshes {
         command: Render_Command;
+        command.shader = .TERRAIN;
         command.mesh = it.mesh;
         command.textures = push_view(context.temp_arena, *Texture.[
             load_texture("grass_diffuse"),
             load_texture("grass_normal")
         ]);
         command.transform = terrain.transform * it.transform;
+        command.instance.material_params = v4(terrain.size, 0, 0);
         add_render_command(batcher, command);
     }
 }
@@ -49,18 +68,20 @@ Terrain_Mesh :: struct {
     transform := mat4_identity;
 }
 
-create_terrain_mesh :: (size: Vec2, subdivisions: int) -> *Mesh {
-    n := (1 << subdivisions) + 1;
+create_terrain_mesh :: (opts: Terrain_Options) -> *Mesh {
+    profile_scope("create_terrain_mesh");
+
+    n := (1 << opts.subdivisions) + 1;
     vertex_count := n*n;
 
     positions := push_view(context.temp_arena, Vec3, vertex_count);
     tex_coords := push_view(context.temp_arena, Vec2, vertex_count);
 
-    inc := size / v2(cast(float) n);
-    start := -size * .5;
+    inc := opts.size / v2(cast(float) n);
+    start := -opts.size * .5;
     for y: 0..n-1 for x: 0..n-1 {
         positions[x+y*n] = v3(start + .{cast(float) x, cast(float) y}*inc, 0.0);
-        tex_coords[x+y*n] = (positions[x+y*n].xy - start) / size;
+        tex_coords[x+y*n] = (positions[x+y*n].xy - start) / opts.size;
     }
 
     index_mark := arena_push_mark(context.temp_arena);
@@ -81,31 +102,28 @@ create_terrain_mesh :: (size: Vec2, subdivisions: int) -> *Mesh {
 
     indices := arena_to_view(context.temp_arena, u32, index_mark);
 
-    apply_terrain_noise(n, positions);
+    print("terrain mesh has % verts and % indices (% tris)\n", vertex_count, indices.count, indices.count/3);
+
+    apply_terrain_noise(opts, n, positions);
 
     data: Mesh_Data;
     data.positions = positions;
     data.tex_coords = tex_coords;
     data.indices = indices;
 
-    return create_mesh(tprint("plane_%x%", n, n, size), data);
+    return create_mesh(tprint("plane_%x%", n, n), data);
 }
 
-apply_terrain_noise :: (n: int, positions: [] Vec3) {
-    height_scale :: 25.0;
-
-    encoded_tree :: "DQAEAAAAAACAQBAAAACAPwcAAAAAgD8A4XoUPwDNzIw/";
-
-    min_max: [2] float;
-    noise_values := push_view(context.temp_arena, float, n*n);
-
-    noise := fnNewFromEncodedNodeTree(encoded_tree, 0);
-    fnGenTileable2D(noise, noise_values.data, xx n, xx n, 0.02, 1984, min_max.data);
+apply_terrain_noise :: (opts: Terrain_Options, n: int, positions: [] Vec3) {
+    noise_values, min_value, max_value := noise_fbm_gen_values(
+        context.temp_arena, opts.noise_seed, opts.noise_origin,
+        opts.noise_scale, n, n, opts.noise_octaves, opts.noise_persistence
+    );
 
     for y: 0..n-1 for x: 0..n-1 {
-        value := remap(noise_values[x+y*n], min_max[0], min_max[1], -1.0, 1.0);
-        positions[x+y*n].z += value * height_scale;
-    }
+        value := remap(noise_values[x+y*n], min_value, max_value, 0.0, 1.0);
+        value = pow(value, opts.noise_power);
 
-    fnDeleteNodeRef(noise);
+        positions[x+y*n].z = value * opts.height_scale;
+    }
 }

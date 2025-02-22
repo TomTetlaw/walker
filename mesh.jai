@@ -201,6 +201,8 @@ fallback_mesh: *Mesh;
 meshes: Bucket_Array(Mesh);
 
 create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
+    profile_scope("create_buffers");
+
     generate_normals := true;
     generate_tangents := true;
 
@@ -252,32 +254,48 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
                 tri_count = data.positions.count / 3;
             }
 
-            for 0..tri_count-1 {
-                i0 := it*3 + 0;
-                i1 := it*3 + 1;
-                i2 := it*3 + 2;
+            if use_indices {
+                for 0..tri_count-1 {
+                    i0 := data.indices[it*3 + 0];
+                    i1 := data.indices[it*3 + 1];
+                    i2 := data.indices[it*3 + 2];
 
-                if use_indices {
-                    i0 = data.indices[i0];
-                    i1 = data.indices[i1];
-                    i2 = data.indices[i2];
+                    p0 := data.positions[i0];
+                    p1 := data.positions[i1];
+                    p2 := data.positions[i2];
+
+                    e1 := p1 - p0;
+                    e2 := p2 - p0;
+
+                    n := cross_product(e1, e2);
+                    normals[i0] = n;
+                    normals[i1] = n;
+                    normals[i2] = n;
                 }
+            } else {
+                for 0..tri_count-1 {
+                    i0 := it*3 + 0;
+                    i1 := it*3 + 1;
+                    i2 := it*3 + 2;
 
-                p0 := data.positions[i0];
-                p1 := data.positions[i1];
-                p2 := data.positions[i2];
+                    p0 := data.positions[i0];
+                    p1 := data.positions[i1];
+                    p2 := data.positions[i2];
 
-                e1 := p1 - p0;
-                e2 := p2 - p0;
+                    e1 := p1 - p0;
+                    e2 := p2 - p0;
 
-                n := normalize(cross_product(e1, e2));
-                normals[i0] = n;
-                normals[i1] = n;
-                normals[i2] = n;
+                    n := cross_product(e1, e2);
+                    normals[i0] = n;
+                    normals[i1] = n;
+                    normals[i2] = n;
+                }
             }
         } else {
             for * normals it.* = .{0, 0, 1};
         }
+
+        for * normals it.* = normalize(it.*);
     }
 
     if data.tangents.count > 0 {
@@ -293,39 +311,62 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
                 tri_count = data.positions.count / 3;
             }
 
-            for 0..tri_count-1 {
-                i0 := it*3 + 0;
-                i1 := it*3 + 1;
-                i2 := it*3 + 2;
+            if use_indices {
+                for 0..tri_count-1 {
+                    i0 := data.indices[it*3 + 0];
+                    i1 := data.indices[it*3 + 1];
+                    i2 := data.indices[it*3 + 2];
 
-                if use_indices {
-                    i0 = data.indices[i0];
-                    i1 = data.indices[i1];
-                    i2 = data.indices[i2];
+                    p0 := data.positions[i0];
+                    p1 := data.positions[i1];
+                    p2 := data.positions[i2];
+
+                    e1 := p1 - p0;
+                    e2 := p2 - p0;
+
+                    n0 := normals[i0];
+                    n1 := normals[i1];
+                    n2 := normals[i2];
+
+                    t0 := cross_product(n0, e1);
+                    t1 := cross_product(n1, e1);
+                    t2 := cross_product(n2, e1);
+
+                    tangents[i0] = t0;
+                    tangents[i1] = t1;
+                    tangents[i2] = t2;
                 }
+            } else {
+                for 0..tri_count-1 {
+                    i0 := it*3 + 0;
+                    i1 := it*3 + 1;
+                    i2 := it*3 + 2;
 
-                p0 := data.positions[i0];
-                p1 := data.positions[i1];
-                p2 := data.positions[i2];
+                    p0 := data.positions[i0];
+                    p1 := data.positions[i1];
+                    p2 := data.positions[i2];
 
-                e1 := p1 - p0;
-                e2 := p2 - p0;
+                    e1 := p1 - p0;
+                    e2 := p2 - p0;
 
-                n0 := normals[i0];
-                n1 := normals[i1];
-                n2 := normals[i2];
+                    n0 := normals[i0];
+                    n1 := normals[i1];
+                    n2 := normals[i2];
 
-                t0 := normalize(cross_product(n0, e1));
-                t1 := normalize(cross_product(n1, e1));
-                t2 := normalize(cross_product(n2, e1));
+                    t0 := cross_product(n0, e1);
+                    t1 := cross_product(n1, e1);
+                    t2 := cross_product(n2, e1);
 
-                tangents[i0] = t0;
-                tangents[i1] = t1;
-                tangents[i2] = t2;
+                    tangents[i0] = t0;
+                    tangents[i1] = t1;
+                    tangents[i2] = t2;
+                }
             }
         } else {
             for * tangents it.* = .{1, 0, 0};
         }
+
+        for * tangents it.* = normalize(it.*);
     }
 
     if data.indices.count > 0 {

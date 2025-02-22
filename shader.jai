@@ -94,22 +94,6 @@ shaders: Bucket_Array(Shader);
 
 fallback_shader: *Shader;
 
-reload_shader :: (shader: *Shader) {
-    SDL_ReleaseGPUShader(context.device, shader.vertex);
-    SDL_ReleaseGPUShader(context.device, shader.fragment);
-    shader.vertex = null;
-    shader.fragment = null;
-
-    reloaded := load_shader(shader.name);
-
-    for * shader.pipelines {
-        it.shader = reloaded;
-        recreate_pipeline(it);
-    }
-
-    print("Hotloaded shader %\n", shader.name);
-}
-
 Shader_Header :: struct {
     hash: u32;
     vertex_size: int;
@@ -156,8 +140,16 @@ shader_needs_recompile :: (name: string) -> bool {
     return true;
 }
 
-compile_shader :: (name: string) -> bool {
-    path := tprint("shaders/%.shader", name);
+compile_shader :: (name: string, $offline := false) -> bool {
+    base_path: string;
+
+    #if offline {
+        base_path = "run_tree/shaders";
+    } else {
+        base_path = "./shaders";
+    }
+
+    path := tprint("%/%.shader", base_path, name);
     source_code, ok := read_entire_file(path);
     if !ok return false;
 
@@ -166,7 +158,7 @@ compile_shader :: (name: string) -> bool {
     vert_info.entrypoint = "vert_main";
     vert_info.shader_stage = .SDL_SHADERCROSS_SHADERSTAGE_VERTEX;
     vert_info.name = tcs(tprint("%_vertex", name));
-    vert_info.include_dir = "shaders/";
+    vert_info.include_dir = tcs(base_path);
 
     vert_size: u64;
     vert_meta: SDL_ShaderCross_GraphicsShaderMetadata;
@@ -185,7 +177,7 @@ compile_shader :: (name: string) -> bool {
     frag_info.entrypoint = "frag_main";
     frag_info.shader_stage = .SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT;
     frag_info.name = tcs(tprint("%_fragment", name));
-    frag_info.include_dir = "shaders/";
+    frag_info.include_dir = tcs(base_path);
 
     frag_size: u64;
     frag_meta: SDL_ShaderCross_GraphicsShaderMetadata;
@@ -208,7 +200,7 @@ compile_shader :: (name: string) -> bool {
     compiled.vertex_spirv = vert;
     compiled.fragment_spirv = frag;
 
-    dest := tprint("shaders/%.compiled_shader", name);
+    dest := tprint("%/%.compiled_shader", base_path, name);
     compiled_file := file_open(dest, true);
     file_write(*compiled_file, *compiled.header, size_of(Shader_Header));
     file_write(*compiled_file, vert, cast (int) vert_size);
@@ -220,14 +212,53 @@ compile_shader :: (name: string) -> bool {
 
 shader_watcher: File_Watcher();
 
+reload_shader :: (shader: *Shader) {
+    SDL_ReleaseGPUShader(context.device, shader.vertex);
+    SDL_ReleaseGPUShader(context.device, shader.fragment);
+    shader.vertex = null;
+    shader.fragment = null;
+
+    file_delete(tprint("shaders/%.compiled_shader", shader.name));
+
+    reloaded := load_shader(shader.name);
+
+    for * shader.pipelines {
+        it.shader = reloaded;
+        recreate_pipeline(it);
+    }
+
+    print("Hotloaded shader %\n", shader.name);
+}
+
 shader_hotload_callback :: (watcher: *File_Watcher(), change: *File_Change, user_data: *void) {
     path, base, ext := path_decomp(change.full_path);
 
-    if !equal(ext, "shader") return;
+    all := false;
+    if equal(base, "shared") {
+        print("shared.hlsl modified, reloading all shaders\n");
+        all = true;
+    }
+
+    if !all && !equal(ext, "shader") return;
 
     for * shaders {
-        if equal(it.name, base) {
+        if all || equal(it.name, base) {
             reload_shader(it);
+        }
+    }
+}
+
+COMPILE_SHADERS_OFFLINE :: true;
+#if COMPILE_SHADERS_OFFLINE {
+    #run {
+        context.temp_arena = make_arena();
+
+        files := file_list("run_tree/shaders");
+        for files {
+            path, base, ext := path_decomp(it);
+            if equal(ext, "shader") {
+                compile_shader(base, true);
+            }
         }
     }
 }

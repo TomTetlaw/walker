@@ -109,6 +109,7 @@ update_entities :: () {
 render_entities :: (batcher: *Render_Batcher) {
     for entity_list {
         command: Render_Command;
+        command.shader = .STATIC_MESH;
         command.mesh = it.mesh;
         command.textures = it.textures;
         command.transform = mat4_translation(it.draw_p) * mat4_scale(it.scale) * mat4_rotation(it.rotation);

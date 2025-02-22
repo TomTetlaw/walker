@@ -1,72 +1,67 @@
 // Workspace: Walker
 
 //
-// String added via add_build_string() from F:/walker/first.jai:31.
+// String added via add_build_string() from F:/walker/first.jai:30.
 //
 #import "Basic";
 
 //
-// String added via add_build_string() from F:/walker/first.jai:31.
+// String added via add_build_string() from F:/walker/first.jai:30.
 //
 #import "String";
 
 //
-// String added via add_build_string() from F:/walker/first.jai:31.
+// String added via add_build_string() from F:/walker/first.jai:30.
 //
 #import "File";
 
 //
-// String added via add_build_string() from F:/walker/first.jai:31.
+// String added via add_build_string() from F:/walker/first.jai:30.
 //
 #import "sdl3";
 
 //
-// String added via add_build_string() from F:/walker/first.jai:31.
+// String added via add_build_string() from F:/walker/first.jai:30.
 //
 #import "stb_image";
 
 //
-// String added via add_build_string() from F:/walker/first.jai:31.
+// String added via add_build_string() from F:/walker/first.jai:30.
 //
 #import "Command_Line";
 
 //
-// String added via add_build_string() from F:/walker/first.jai:31.
+// String added via add_build_string() from F:/walker/first.jai:30.
 //
 #import "File_Utilities";
 
 //
-// String added via add_build_string() from F:/walker/first.jai:31.
+// String added via add_build_string() from F:/walker/first.jai:30.
 //
 #import "Hash";
 
 //
-// String added via add_build_string() from F:/walker/first.jai:31.
+// String added via add_build_string() from F:/walker/first.jai:30.
 //
 #import "File_Watcher";
 
 //
-// String added via add_build_string() from F:/walker/first.jai:31.
+// String added via add_build_string() from F:/walker/first.jai:30.
 //
 #import "System";
 
 //
-// String added via add_build_string() from F:/walker/first.jai:31.
+// String added via add_build_string() from F:/walker/first.jai:30.
 //
 #import "Random";
 
 //
-// String added via add_build_string() from F:/walker/first.jai:31.
-//
-#import "fastnoise_jai";
-
-//
-// String added via add_build_string() from F:/walker/first.jai:31.
+// String added via add_build_string() from F:/walker/first.jai:30.
 //
 #import "Windows";
 
 //
-// String added via add_build_string() from F:/walker/first.jai:34.
+// String added via add_build_string() from F:/walker/first.jai:33.
 //
 using,except(Quaternion,rgba) Math :: #import "Math";
 
@@ -76,53 +71,7 @@ using,except(Quaternion,rgba) Math :: #import "Math";
     fullscreen := false;
 
 //
-// #insert text. Generated from F:/walker/modules/fastnoise_jai/module.jai:18.
-//
-Constant :: 0;
-White :: 1;
-Checkerboard :: 2;
-SineWave :: 3;
-PositionOutput :: 4;
-DistanceToPoint :: 5;
-Value :: 6;
-Perlin :: 7;
-Simplex :: 8;
-OpenSimplex2 :: 9;
-CellularValue :: 10;
-CellularDistance :: 11;
-CellularLookup :: 12;
-FractalFBm :: 13;
-FractalPingPong :: 14;
-FractalRidged :: 15;
-DomainWarpGradient :: 16;
-DomainWarpFractalProgressive :: 17;
-DomainWarpFractalIndependant :: 18;
-DomainScale :: 19;
-DomainOffset :: 20;
-DomainRotate :: 21;
-SeedOffset :: 22;
-Remap :: 23;
-ConvertRGBA8 :: 24;
-Add :: 25;
-Subtract :: 26;
-Multiply :: 27;
-Divide :: 28;
-Min :: 29;
-Max :: 30;
-MinSmooth :: 31;
-MaxSmooth :: 32;
-Fade :: 33;
-Terrace :: 34;
-PowFloat :: 35;
-PowInt :: 36;
-DomainAxisScale :: 37;
-AddDimension :: 38;
-RemoveDimension :: 39;
-GeneratorCache :: 40;
-OpenSimplex2S :: 41;
-
-//
-// String added via add_build_string() from F:/walker/first.jai:69.
+// String added via add_build_string() from F:/walker/first.jai:68.
 //
 _Test_Entity: Bucket_Array(Test_Entity);
 get_entity_array :: ($T: Type) -> *Bucket_Array(T) #expand {

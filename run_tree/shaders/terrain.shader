@@ -76,18 +76,28 @@ float4 frag_main(Frag_Input input): SV_Target {
 	
 	float depth = (input.position.z / input.position.w) +1;
 	
-	float3 diffuse = input.colour.rgb * diffuse_texture.Sample(diffuse_sampler, tex_coord).rgb;
+	float3 diffuse = input.colour.rgb * fractal_texture_mip(diffuse_texture, diffuse_sampler, tex_coord, depth).rgb;
 
 	float3 tangent = input.tangent;
 	
-	float3 normal = normal_texture.Sample(normal_sampler, tex_coord).rgb * 2 - 1;
+	float3 normal = fractal_texture_mip(normal_texture, normal_sampler, tex_coord, depth).rgb * 2 - 1;
 	float3x3 tbn = float3x3(tangent, cross(input.normal, tangent), input.normal);
 	normal = normalize(mul(tbn, normal));
+	
+	// apply mountain peak highlights
+    float cosTheta = dot(normalize(normal), float3(0.0, 0.0, 1.0));
+    float slope = saturate(1.0 - cosTheta);
+	float mask = smoothstep(150, 350, input.world_position.z);
+	
+	float3 colour = diffuse;
+	colour *= 1 - mask;
+	colour += (float3(1,1,1) * (1 - slope) * mask);
+	colour += diffuse * slope * mask;
 	
 	Intermediates intermediates;
 	intermediates.world_position = input.world_position;
 	intermediates.normal = normal;
-	intermediates.colour = diffuse;
+	intermediates.colour = colour;
 	intermediates.view_position = camera_position.xyz;
 	intermediates.view_direction = camera_direction.xyz;
 	
