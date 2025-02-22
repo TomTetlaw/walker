@@ -97,11 +97,11 @@ main :: () {
     spawn_entity(e);
 
     opts: Terrain_Options;
-    opts.subdivisions = 8;
+    opts.subdivisions = 11;
     opts.size = v2(10000.0);
     opts.height_scale = 1000.0;
 
-    opts.noise_seed = to_milliseconds(current_time_monotonic());//1984;
+    opts.noise_seed = 1984;//to_milliseconds(current_time_monotonic());;
     opts.noise_octaves = 10;
     opts.noise_persistence = .5;
     opts.noise_scale = .007;
