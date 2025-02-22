@@ -69,6 +69,7 @@ cbuffer Constant_Buffer : register(b0, space3) {
 	float4 light_params;
 	float4 directional_light_dir;
 	float4 directional_light_colour;
+	float4 time;
 };
 
 float4 frag_main(Frag_Input input): SV_Target {
@@ -90,6 +91,7 @@ float4 frag_main(Frag_Input input): SV_Target {
 	intermediates.colour = diffuse;
 	intermediates.view_position = camera_position.xyz;
 	intermediates.view_direction = camera_direction.xyz;
+	intermediates.time = time;
 	
 	Light light;
 	light.dir = directional_light_dir.xyz;

@@ -17,6 +17,8 @@ Render_Batch :: struct {
 
     pipeline: *Pipeline;
 
+    flags: Command_Flags;
+
     num_indices: int;
     num_instances: int;
 }
@@ -51,10 +53,15 @@ Mesh_Shader :: enum {
     TERRAIN;
 }
 
+Command_Flags :: enum_flags {
+    WIREFRAME;
+}
+
 Render_Command :: struct {
     shader: Mesh_Shader;
     mesh: *Mesh;
     textures: [] *Texture;
+    flags: Command_Flags;
     using instance: Instance_Data;
 }
 
@@ -70,6 +77,7 @@ add_render_command :: (batcher: *Render_Batcher, command: Render_Command) {
     }
 
     hash := get_hash(pipeline.name);
+    hash = get_hash(command.flags, hash);
     hash = get_hash(command.mesh.name, hash);
     for command.textures {
         hash = get_hash(it.name, hash);
@@ -84,6 +92,7 @@ add_render_command :: (batcher: *Render_Batcher, command: Render_Command) {
         }
 
         batch.pipeline = pipeline;
+        batch.flags = command.flags;
 
         batch.instances = push_array(batcher.data_arena, Instance_Data, 32);
 
@@ -120,7 +129,7 @@ Mesh_Vertex_Constants :: struct {
 
 Mesh_Fragment_Constants :: struct {
     camera_position: Vec4;
-    view_dir: Vec4;
+    camera_direction: Vec4;
 
     // x = ambient lighting
     // y = diffuse intensity
@@ -130,6 +139,8 @@ Mesh_Fragment_Constants :: struct {
 
     directional_light_dir := Vec4.{0, 0, -1, 0};
     directional_light_colour := colour_white;
+
+    time: Vec4;
 }
 
 Render_Scene :: struct {
@@ -176,7 +187,7 @@ render_scene :: (scene: Render_Scene) {
 
     colour_target := SDL_GPUColorTargetInfo.{
         texture = swap_texture,
-        clear_color = .{.6, .6, .6, 1},
+        clear_color = .{0.2, 0.5, 0.8, 1},
         load_op = .SDL_GPU_LOADOP_CLEAR,
         store_op = .SDL_GPU_STOREOP_STORE,
     };
@@ -198,7 +209,11 @@ render_scene :: (scene: Render_Scene) {
 
     base_instance := 0;
     for batch: batches {
-        SDL_BindGPUGraphicsPipeline(render_pass, batch.pipeline.pipeline_object);
+        if batch.flags & .WIREFRAME {
+            SDL_BindGPUGraphicsPipeline(render_pass, batch.pipeline.wireframe);
+        } else {
+            SDL_BindGPUGraphicsPipeline(render_pass, batch.pipeline.filled);
+        }
 
         SDL_BindGPUVertexStorageBuffers(render_pass, 0, *instance_buffer, 1);
         SDL_BindGPUVertexBuffers(render_pass, 0, batch.vertex_buffers.data, xx batch.vertex_buffers.count);
@@ -224,7 +239,6 @@ init_renderer :: () {
         enable_depth_write = true,
         enable_alpha_blending = true,
         cull_mode = .SDL_GPU_CULLMODE_BACK,
-        fill_mode = .SDL_GPU_FILLMODE_FILL,
         shader_name = "static_mesh",
         needed_textures = 2
     };
@@ -294,16 +308,24 @@ Pipeline :: struct {
     name: string;
     shader: *Shader;
 
-    create_info: SDL_GPUGraphicsPipelineCreateInfo;
-    pipeline_object: *SDL_GPUGraphicsPipeline;
+    filled_info: SDL_GPUGraphicsPipelineCreateInfo;
+    filled: *SDL_GPUGraphicsPipeline;
+
+    wireframe_info: SDL_GPUGraphicsPipelineCreateInfo;
+    wireframe: *SDL_GPUGraphicsPipeline;
 
     needed_textures: int;
 }
 
 recreate_pipeline :: (pipeline: *Pipeline) {
-    pipeline.create_info.vertex_shader = pipeline.shader.vertex;
-    pipeline.create_info.fragment_shader = pipeline.shader.fragment;
-    pipeline.pipeline_object = SDL_CreateGPUGraphicsPipeline(context.device, *pipeline.create_info);
+    pipeline.filled_info.vertex_shader = pipeline.shader.vertex;
+    pipeline.filled_info.fragment_shader = pipeline.shader.fragment;
+    pipeline.filled = SDL_CreateGPUGraphicsPipeline(context.device, *pipeline.filled_info);
+
+    pipeline.wireframe_info.vertex_shader = pipeline.shader.vertex;
+    pipeline.wireframe_info.fragment_shader = pipeline.shader.fragment;
+    pipeline.wireframe = SDL_CreateGPUGraphicsPipeline(context.device, *pipeline.wireframe_info);
+    
     print("Recreated pipeline %\n", pipeline.name);
 }
 
@@ -356,7 +378,6 @@ Pipeline_Create_Options :: struct {
     enable_depth_write: bool;
     enable_alpha_blending: bool;
     cull_mode := SDL_GPUCullMode.SDL_GPU_CULLMODE_BACK;
-    fill_mode := SDL_GPUFillMode.SDL_GPU_FILLMODE_FILL;
     shader_name: string;
     needed_textures: int;
 }
@@ -391,7 +412,7 @@ create_pipeline :: (name: string, opts: Pipeline_Create_Options) -> *Pipeline {
     }
 
     info.rasterizer_state.cull_mode = opts.cull_mode;
-    info.rasterizer_state.fill_mode = opts.fill_mode;
+    info.rasterizer_state.fill_mode = .SDL_GPU_FILLMODE_FILL;
     info.rasterizer_state.front_face = .SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE;
 
     buffers_desc := push_view(renderer_arena, SDL_GPUVertexBufferDescription, 5);
@@ -416,13 +437,19 @@ create_pipeline :: (name: string, opts: Pipeline_Create_Options) -> *Pipeline {
     info.vertex_shader = shader.vertex;
     info.fragment_shader = shader.fragment;
 
-    pipeline_object := SDL_CreateGPUGraphicsPipeline(context.device, *info);
+    filled := SDL_CreateGPUGraphicsPipeline(context.device, *info);
+
+    wireframe_info := info;
+    wireframe_info.rasterizer_state.fill_mode = .SDL_GPU_FILLMODE_LINE;
+    wireframe := SDL_CreateGPUGraphicsPipeline(context.device, *wireframe_info);
 
     pipeline := bucket_array_add(*pipelines, .{});
     pipeline.name = name;
-    pipeline.create_info = info;
+    pipeline.filled_info = info;
+    pipeline.wireframe_info = wireframe_info;
     pipeline.shader = shader;
-    pipeline.pipeline_object = pipeline_object;
+    pipeline.filled = filled;
+    pipeline.wireframe = wireframe;
     pipeline.needed_textures = opts.needed_textures;
 
     linked_list_add(*shader.pipelines, pipeline);

@@ -3,6 +3,12 @@ noise_fbm_gen_values :: (arena: *Arena, seed: int, origin: Vec2, scale: float,
     w: int, h: int, octaves: int, persistence: float) -> [] float, float, float {
     random_seed(cast(u64) seed);
 
+    for 0..255 {
+        rand := random_get();
+        perlin_lookup[it] = rand % 256;
+        perlin_lookup[it + 256] = rand % 256;
+    }
+
     values := push_view(arena, float, w*h);
 
     min_value := FLOAT32_MAX;
@@ -57,15 +63,7 @@ noise_fbm_perlin :: (x: float, y: float, octaves: int, persistence: float) -> fl
 
 #scope_file
 
-#no_reset perlin_lookup: [512] u64;
-
-#run {
-    for 0..255 {
-        rand := random_get();
-        perlin_lookup[it] = rand % 256;
-        perlin_lookup[it + 256] = rand % 256;
-    }
-}
+perlin_lookup: [512] u64;
 
 grad :: (hash: u64, x: float, y: float) -> float {
     h := hash & 15;

@@ -256,6 +256,12 @@ COMPILE_SHADERS_OFFLINE :: true;
         files := file_list("run_tree/shaders");
         for files {
             path, base, ext := path_decomp(it);
+            if equal(ext, "compiled_shader")
+            file_delete(it);
+        }
+
+        for files {
+            path, base, ext := path_decomp(it);
             if equal(ext, "shader") {
                 compile_shader(base, true);
             }
