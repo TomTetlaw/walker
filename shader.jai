@@ -20,7 +20,7 @@ check_shaders_modified :: () {
     process_changes(*shader_watcher);
 }
 
-load_shader :: (name: string) -> *Shader {
+load_shader :: (name: string, $force_recompile := true) -> *Shader {
     shader: *Shader;
 
     for * shaders {
@@ -33,20 +33,23 @@ load_shader :: (name: string) -> *Shader {
     if !shader {
         shader = bucket_array_add(*shaders, .{}, fallback_shader);
         shader.name = name;
-
-        print("Tracking shader %\n", name);
     }
 
     recreate := false;
-    if shader_needs_recompile(name) {
-        recreate = true;
+    if force_recompile || shader_needs_recompile(name) {
         ok := compile_shader(name);
-        print("Compiled shader %\n", name);
-        if !ok return fallback_shader;
+
+        if !ok {
+            return fallback_shader;
+        } else {
+            recreate = true;
+        }
     }
 
     compiled, ok := read_compiled_shader(name);
-    if !ok return fallback_shader;
+    if !ok {
+        return fallback_shader;
+    }
 
     if recreate && shader.vertex {
         SDL_ReleaseGPUShader(context.device, shader.vertex);
@@ -218,9 +221,7 @@ reload_shader :: (shader: *Shader) {
     shader.vertex = null;
     shader.fragment = null;
 
-    file_delete(tprint("shaders/%.compiled_shader", shader.name));
-
-    reloaded := load_shader(shader.name);
+    reloaded := load_shader(shader.name, true);
 
     for * shader.pipelines {
         it.shader = reloaded;
@@ -254,12 +255,6 @@ COMPILE_SHADERS_OFFLINE :: true;
         context.temp_arena = make_arena();
 
         files := file_list("run_tree/shaders");
-        for files {
-            path, base, ext := path_decomp(it);
-            if equal(ext, "compiled_shader")
-            file_delete(it);
-        }
-
         for files {
             path, base, ext := path_decomp(it);
             if equal(ext, "shader") {

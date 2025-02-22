@@ -36,6 +36,7 @@ float4 fractal_texture_mip(Texture2D map, SamplerState sampler, float2 tex_coord
 struct Intermediates {
 	float3 world_position;
 	float3 normal;
+	float3 vertex_normal;
 	float3 colour;
 	
 	float3 view_position;
@@ -91,35 +92,106 @@ void apply_fog(inout Intermediates intermediates, Light light)
 }
 */
 
-// Simple 3D hash noise (based on common shader techniques)
-float hash(float3 p) {
+float hash(float2 p) {
     p = frac(p * 0.3183099 + 0.1);
-    return frac(sin(dot(p, float3(127.1, 311.7, 74.7))) * 43758.5453);
+    return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
 }
 
-float noise(float3 p) {
+float noise_2d(float2 p) {
+    float2 i = floor(p);
+    float2 f = frac(p);
+    float2 u = f * f * (3.0 - 2.0 * f); // Smoothstep
+    return lerp(
+		lerp(hash(i + float2(0,0)), hash(i + float2(1,0)), u.x),
+        lerp(hash(i + float2(0,1)), hash(i + float2(1,1)), u.x),
+    u.y);
+}
+
+// Hash function to generate pseudo-random gradients
+float3 hash_gradient(float3 p) {
+    float3 h = float3(
+        dot(p, float3(127.1, 311.7, 74.7)),
+        dot(p, float3(269.5, 183.3, 246.1)),
+        dot(p, float3(113.5, 271.9, 124.6))
+    );
+    return normalize(frac(sin(h) * 43758.5453) * 2.0 - 1.0); // Returns a normalized random vector
+}
+
+// 3D Perlin noise
+float noise_3d(float3 p) {
+    // Integer and fractional parts
     float3 i = floor(p);
     float3 f = frac(p);
-    float3 u = f * f * (3.0 - 2.0 * f); // Smoothstep
-    return lerp(
-        lerp(
-            lerp(hash(i + float3(0,0,0)), hash(i + float3(1,0,0)), u.x),
-            lerp(hash(i + float3(0,1,0)), hash(i + float3(1,1,0)), u.x),
-            u.y),
-        lerp(
-            lerp(hash(i + float3(0,0,1)), hash(i + float3(1,0,1)), u.x),
-            lerp(hash(i + float3(0,1,1)), hash(i + float3(1,1,1)), u.x),
-            u.y),
-        u.z);
+    
+    // Smoothstep for interpolation
+    float3 u = f * f * (3.0 - 2.0 * f);
+    
+    // Get gradients at the 8 surrounding lattice points
+    float3 g000 = hash_gradient(i + float3(0, 0, 0));
+    float3 g100 = hash_gradient(i + float3(1, 0, 0));
+    float3 g010 = hash_gradient(i + float3(0, 1, 0));
+    float3 g110 = hash_gradient(i + float3(1, 1, 0));
+    float3 g001 = hash_gradient(i + float3(0, 0, 1));
+    float3 g101 = hash_gradient(i + float3(1, 0, 1));
+    float3 g011 = hash_gradient(i + float3(0, 1, 1));
+    float3 g111 = hash_gradient(i + float3(1, 1, 1));
+    
+    // Distance vectors from lattice points to sample point
+    float3 d000 = f - float3(0, 0, 0);
+    float3 d100 = f - float3(1, 0, 0);
+    float3 d010 = f - float3(0, 1, 0);
+    float3 d110 = f - float3(1, 1, 0);
+    float3 d001 = f - float3(0, 0, 1);
+    float3 d101 = f - float3(1, 0, 1);
+    float3 d011 = f - float3(0, 1, 1);
+    float3 d111 = f - float3(1, 1, 1);
+    
+    // Dot products of gradients and distance vectors
+    float n000 = dot(g000, d000);
+    float n100 = dot(g100, d100);
+    float n010 = dot(g010, d010);
+    float n110 = dot(g110, d110);
+    float n001 = dot(g001, d001);
+    float n101 = dot(g101, d101);
+    float n011 = dot(g011, d011);
+    float n111 = dot(g111, d111);
+    
+    // Trilinear interpolation
+    float nx00 = lerp(n000, n100, u.x);
+    float nx10 = lerp(n010, n110, u.x);
+    float nx01 = lerp(n001, n101, u.x);
+    float nx11 = lerp(n011, n111, u.x);
+    
+    float nxy0 = lerp(nx00, nx10, u.y);
+    float nxy1 = lerp(nx01, nx11, u.y);
+    
+    float nxyz = lerp(nxy0, nxy1, u.z);
+    
+    // Normalize output to [0, 1] range (Perlin noise is typically [-1, 1])
+    return nxyz * .5 + 0.5;
 }
 
-float fractal_noise(float3 p, int octaves, float persistence) {
+float fractal_noise_3d(float3 p, int octaves, float persistence) {
 	float total = 0;
 	float amplitude = 1;
 	float max_value = 0.0;
 	
 	for (int i = 0; i < octaves; i++) {
-		total += amplitude * noise(p * pow(2.0, i));
+		total += amplitude * noise_3d(p * pow(2.0, i));
+		max_value += amplitude;
+		amplitude *= persistence;
+	}
+	
+	return saturate(total / max_value);
+}
+
+float fractal_noise_2d(float2 p, int octaves, float persistence) {
+	float total = 0;
+	float amplitude = 1;
+	float max_value = 0.0;
+	
+	for (int i = 0; i < octaves; i++) {
+		total += amplitude * noise_2d(p * pow(2.0, i));
 		max_value += amplitude;
 		amplitude *= persistence;
 	}
@@ -129,10 +201,10 @@ float fractal_noise(float3 p, int octaves, float persistence) {
 
 void apply_fog(inout Intermediates intermediates, Light light)
 {
-    float a = 0.00025;    // Base fog density
+    float a = 0.001;    // Base fog density
     float b = 0.001;      // Distance decay rate
-    float height_b = 0.0005; // Height decay rate
-    const int NUM_SAMPLES = 32; // Number of samples along ray (adjust for quality/performance)
+    float height_b = 0.00015; // Height decay rate
+    const int NUM_SAMPLES = 64; // Number of samples along ray (adjust for quality/performance)
     
     // Distance and view direction
     float distance = length(intermediates.view_position - intermediates.world_position);
@@ -148,37 +220,38 @@ void apply_fog(inout Intermediates intermediates, Light light)
     float accumulated_density = 0.0;
     float step_size = distance / NUM_SAMPLES;
 	float3 ray_start = intermediates.world_position;
-    float3 ray_end = intermediates.view_position;
 	float3 ray_dir = -view;
     float noise_scale = 0.01; // Scale of noise (smaller = finer detail)
-    
+
     for (int i = 0; i < NUM_SAMPLES; i++) {
         float t = step_size * (i + 0.5); // Sample at midpoint of each step
         float3 sample_pos = ray_start + ray_dir * t;
 		
-        sample_pos.z += intermediates.time.x;
+		float fog_speed = 100;
+		sample_pos.xy -= intermediates.time.x * fog_speed *.5;
+		sample_pos.z += intermediates.time.x * fog_speed;
 		
         // Noise-based density variation
-        float noise_val = fractal_noise(sample_pos * noise_scale, 5, .125);
-        float local_density = a * (0.5 + noise_val * 0.5); // Vary density between 0.5a and a
-        
-        // Reduce density with height
-        float height_factor = exp(-max(sample_pos.z, 0.0) * height_b);
-        local_density *= height_factor;
+        float noise_val = noise_3d(sample_pos * noise_scale);
+		float min_a = .4;
+        float local_density = a * (min_a + noise_val * (1 - min_a));
+		
+		float height_factor = exp(-max(ray_start.z, 0.0) * height_b);
+		accumulated_density *= height_factor;
         
         // Accumulate density over step
         accumulated_density += local_density * step_size;
     }
     
     // Final fog amount (clamped)
-    float fog_amount = saturate(pow(accumulated_density,.5));
+    float fog_amount = saturate(accumulated_density);
     
     // Sun influence and fog color
     float sun_amount = max(dot(view, light.dir), 0.0);
-    float3 fog_colour = lerp(float3(0.5, 0.5, 0.5), light.colour, pow(sun_amount, 8.0));
+    float3 fog_colour = lerp(float3(0.7, 0.7, 0.7), light.colour, pow(sun_amount, 8.0));
     
     // Apply fog
-    intermediates.colour = lerp(intermediates.colour, fog_colour, fog_amount);
+    intermediates.colour = lerp(intermediates.colour, fog_colour, min(fog_amount, .8));
 	
-	intermediates.colour = float3(accumulated_density, accumulated_density, accumulated_density);
+	// intermediates.colour = float3(accumulated_density, accumulated_density, accumulated_density);
 }

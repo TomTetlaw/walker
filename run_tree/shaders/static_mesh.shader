@@ -88,6 +88,7 @@ float4 frag_main(Frag_Input input): SV_Target {
 	Intermediates intermediates;
 	intermediates.world_position = input.world_position;
 	intermediates.normal = normal;
+	intermediates.vertex_normal = input.normal;
 	intermediates.colour = diffuse;
 	intermediates.view_position = camera_position.xyz;
 	intermediates.view_direction = camera_direction.xyz;
