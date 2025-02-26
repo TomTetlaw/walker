@@ -4,20 +4,26 @@
 
 auto_view_rule:
 {
-  source: "`[] Key_Press`"
-  dest: "slice"
+  source: "Vec2"
+  dest: "only:x y"
 }
 
 auto_view_rule:
 {
-  source: "Linked_List(T)"
-  dest: "list:(next)"
+  source: "Vec3"
+  dest: "only:x y z"
 }
 
 auto_view_rule:
 {
-  source: "Colour"
-  dest: "colour_rgba"
+  source: "Vec4"
+  dest: "only:x y z w"
+}
+
+auto_view_rule:
+{
+  source: "Mat4"
+  dest: "only:coef[0] coef[1] coef[2] coef[3]"
 }
 
 /// file_path_maps ////////////////////////////////////////////////////////////
@@ -46,7 +52,7 @@ recent_project: "walker.raddbg_project"
 
 window:
 {
-  split_y maximized
+  split_x maximized
   monitor: "\\.\DISPLAY1"
   size: (1874 1096)
   dpi: 96.000000
@@ -58,55 +64,30 @@ window:
   hint_code_text: 1
   panels:
   {
-    0.198245:
+    0.416307:
     {
-      0.802916:
+      0.6209:
       {
         watch: {selected project:{"default.raddbg_project"} }
+        auto_view_rules: {project:{"default.raddbg_project"} }
       }
-      0.197084:
-      {
-        auto_view_rules: {selected project:{"default.raddbg_project"} }
-      }
-    }
-    0.550395:
-    {
-      text: {project:{"default.raddbg_project"} query:{"file:\"main.jai\""} cursor_line:{ 78} cursor_column:{ 1} mark_line:{ 78} mark_column:{1} }
-      text: {project:{"default.raddbg_project"} query:{"file:\"arena.jai\""} cursor_line:{ 125} cursor_column:{ 5} mark_line:{ 125} mark_column:{5} }
-      text: {project:{"default.raddbg_project"} query:{"file:\"../../../../../jai/modules/basic/module.jai\""} cursor_line:{ 117} cursor_column:{ 28} mark_line:{ 117} mark_column:{28} }
-      text: {project:{"default.raddbg_project"} query:{"file:\"../../../../../jai/modules/basic/array.jai\""} cursor_line:{ 260} cursor_column:{ 1} mark_line:{ 260} mark_column:{1} }
-      text: {project:{"default.raddbg_project"} query:{"file:\"input.jai\""} cursor_line:{ 62} cursor_column:{ 1} mark_line:{ 62} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"main.jai\""} cursor_line:{ 101} cursor_column:{ 1} mark_line:{ 101} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"shader.jai\""} cursor_line:{ 202} cursor_column:{ 1} mark_line:{ 202} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"texture.jai\""} cursor_line:{ 53} cursor_column:{ 1} mark_line:{ 53} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"gpu.jai\""} cursor_line:{ 25} cursor_column:{ 1} mark_line:{ 25} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"renderer.jai\""} cursor_line:{ 55} cursor_column:{ 1} mark_line:{ 55} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"mesh.jai\""} cursor_line:{ 283} cursor_column:{ 1} mark_line:{ 283} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"math_vector.jai\""} cursor_line:{ 200} cursor_column:{ 1} mark_line:{ 200} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"arena.jai\""} cursor_line:{ 111} cursor_column:{ 1} mark_line:{ 111} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"C:/jai/modules/basic/print.jai\""} cursor_line:{ 346} cursor_column:{ 1} mark_line:{ 346} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"entity.jai\""} cursor_line:{ 112} cursor_column:{ 1} mark_line:{ 112} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"physics.jai\""} cursor_line:{ 20} cursor_column:{ 6} mark_line:{ 20} mark_column:{6} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"terrain.jai\""} cursor_line:{ 98} cursor_column:{ 1} mark_line:{ 98} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"math_quaternion.jai\""} cursor_line:{ 30} cursor_column:{ 1} mark_line:{ 30} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"C:/jai/modules/runtime_support.jai\""} cursor_line:{ 472} cursor_column:{ 1} mark_line:{ 472} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"C:/jai/modules/hash.jai\""} cursor_line:{ 90} cursor_column:{ 1} mark_line:{ 90} mark_column:{1} }
-      text: {selected project:{"walker.raddbg_project"} query:{"file:\"terrain.jai\""} cursor_line:{ 118} cursor_column:{ 1} mark_line:{ 118} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"noise.jai\""} cursor_line:{ 48} cursor_column:{ 42} mark_line:{ 48} mark_column:{42} }
-    }
-    0.251359:
-    {
-      0.5:
+      0.379099:
       {
         output: {project:{"default.raddbg_project"} cursor_line:{ 2} cursor_column:{ 1} mark_line:{ 2} mark_column:{1} }
-        call_stack: {selected project:{"default.raddbg_project"} }
+        call_stack: {project:{"default.raddbg_project"} }
         targets: {project:{"default.raddbg_project"} }
         breakpoints: {project:{"default.raddbg_project"} }
-      }
-      0.5:
-      {
         disasm: {selected project:{"default.raddbg_project"} }
       }
+    }
+    0.583693:
+    {
+      text: {selected project:{"walker.raddbg_project"} query:{"file:\"renderer.jai\""} cursor_line:{ 703} cursor_column:{ 1} mark_line:{ 703} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"main.jai\""} cursor_line:{ 95} cursor_column:{ 1} mark_line:{ 95} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"entity.jai\""} cursor_line:{ 48} cursor_column:{ 1} mark_line:{ 48} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\".build/.added_strings_w3.jai\""} cursor_line:{ 78} cursor_column:{ 1} mark_line:{ 78} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"math_vector.jai\""} cursor_line:{ 68} cursor_column:{ 1} mark_line:{ 68} mark_column:{1} }
+      text: {project:{"walker.raddbg_project"} query:{"file:\"C:/jai/modules/math/module.jai\""} cursor_line:{ 180} cursor_column:{ 1} mark_line:{ 180} mark_column:{1} }
     }
   }
 }

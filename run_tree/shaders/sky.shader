@@ -38,10 +38,10 @@ Frag_Input vert_main(Vertex_Input input, uint instance_id: SV_InstanceId) {
 
 	float4 world_position = mul(instance.transform, float4(input.position, 1));
 	float4 view_position = mul(mul(view, instance.transform), float4(input.position, 1));
-
+	
 	float4x4 mvp = mul(projection, mul(view, instance.transform));
 	float4 cs_position = mul(mvp, float4(input.position, 1));
-
+	
 	float3 normal = mul(adjoint(instance.transform), input.normal);
 	float3 tangent = mul(adjoint(instance.transform), input.tangent);
 
@@ -79,27 +79,17 @@ cbuffer Constant_Buffer : register(b0, space3) {
 
 float4 frag_main(Frag_Input input): SV_Target {
 	float2 tex_coord = input.tex_coord * input.material_params.xy;
-
+	
 	float depth = input.position.z / input.position.w;
-
+	
 	float3 diffuse = input.colour.rgb * fractal_texture_mip(diffuse_texture, diffuse_sampler, tex_coord, depth).rgb;
 
 	float3 tangent = input.tangent;
-
+	
 	float3 normal = fractal_texture_mip(normal_texture, normal_sampler, tex_coord, depth).rgb * 2 - 1;
 	float3x3 tbn = float3x3(tangent, cross(input.normal, tangent), input.normal);
 	normal = normalize(mul(tbn, normal));
-
-	// apply mountain peak highlights
-    float cosTheta = dot(normalize(normal), float3(0.0, 0.0, 1.0));
-    float slope = saturate(1.0 - cosTheta);
-	float mask = smoothstep(150, 350, input.world_position.z);
-
-	float3 colour = diffuse;
-	colour *= 1 - mask;
-	colour += (float3(1,1,1) * (1 - slope) * mask);
-	colour += diffuse * slope * mask;
-
+	
 	Intermediates intermediates;
 	intermediates.world_position = input.world_position;
 	intermediates.view_position = input.view_position;
@@ -109,12 +99,12 @@ float4 frag_main(Frag_Input input): SV_Target {
 	intermediates.camera_position = camera_position.xyz;
 	intermediates.camera_direction = camera_direction.xyz;
 	intermediates.time = time;
-
+	
 	intermediates.cascades = cascades;
 	intermediates.light_matrices = light_matrices;
 	intermediates.shadow_textures = shadow_textures;
 	intermediates.shadow_sampler = shadow_sampler;
-
+	
 	Light light;
 	light.direction = light_direction.xyz;
 	light.colour = light_colour.rgb;
@@ -122,25 +112,10 @@ float4 frag_main(Frag_Input input): SV_Target {
 	light.diffuse_intensity = light_params.y;
 	light.specular_intensity = light_params.z;
 	light.specular_shininess = light_params.w;
-
+	
 	apply_shadow(intermediates, light);
 	apply_lighting_directional(intermediates, light);
-    apply_fog(intermediates, light);
-
-/*
-    float debug_a = min(1.0, length(intermediates.colour));
-    if (intermediates.layer == 0) {
-        return float4(1, 0, 0, debug_a);
-    }
-    if (intermediates.layer == 1) {
-        return float4(0, 1, 0, debug_a);
-    }
-    if (intermediates.layer == 2) {
-        return float4(0, 0, 1, debug_a);
-    }
-    if (intermediates.layer == 3) {
-        return float4(1, 1, 0, debug_a);
-    }
-*/
+	apply_fog(intermediates, light);
+	
     return float4(intermediates.colour, input.colour.a);
 }

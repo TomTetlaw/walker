@@ -1,4 +1,15 @@
+Camera_Base :: struct {
+    transform: Mat4;
+    view: Mat4;
+    projection: Mat4;
+    position: Vec3;
+    near_plane := 0.01;
+    far_plane := 5000.0;
+}
+
 Flying_Camera :: struct {
+    using #as base: Camera_Base;
+
     FLY_SPEED :: 10.0;
     ROTATION_SPEED :: 0.3;
     ROTATION_SMOOTHING :: 0.3;
@@ -6,15 +17,7 @@ Flying_Camera :: struct {
     yaw, pitch: float;
     rotation_input: Vec2;
 
-    position: Vec3;
     rotation: Quaternion;
-
-    transform: Mat4;
-    view: Mat4;
-    projection: Mat4;
-
-    near_plane := 0.1;
-    far_plane := 50000.0;
 }
 
 flying_camera_apply_input :: (camera: *Flying_Camera, input: Frame_Input) {
@@ -45,8 +48,7 @@ flying_camera_apply_input :: (camera: *Flying_Camera, input: Frame_Input) {
     camera.transform = mat4_translation(camera.position) * mat4_rotation(camera.rotation);
     camera.view = mat4_inverse(camera.transform);
 
-    aspect := context.viewport.x / context.viewport.y;
-    camera.projection = mat4_projection(0.125, aspect, camera.near_plane, camera.far_plane);
+    camera.projection = mat4_projection(0.125, context.aspect_ratio, camera.near_plane, camera.far_plane);
 }
 
 #scope_file

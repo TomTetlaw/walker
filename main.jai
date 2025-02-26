@@ -23,7 +23,6 @@ Test_Entity :: struct {
     using #as base: Entity;
     next, prev: *Test_Entity;
 
-    default_mesh_name = "cube";
     default_texture_names[0] = "uv_check";
 }
 
@@ -91,23 +90,28 @@ main :: () {
 
     camera: Flying_Camera;
 
-    e := make_entity(Test_Entity);
-    e.p = .{5, 0, 0};
-
-    spawn_entity(e);
+    for y: -5..5 for x: -5..5 {
+        e := make_entity(Test_Entity);
+        e.p = .{cast(float) x * 100, cast(float) y * 100, 35};
+        e.scale = v3(15);
+        e.mesh = cube_mesh;
+        spawn_entity(e);
+    }
 
     opts: Terrain_Options;
-    opts.subdivisions = 11;
+    opts.subdivisions = 8;
     opts.size = v2(10000.0);
     opts.height_scale = 1000.0;
 
-    opts.noise_seed = 1984;//to_milliseconds(current_time_monotonic());;
+    opts.noise_seed = to_milliseconds(current_time_monotonic());
     opts.noise_octaves = 10;
     opts.noise_persistence = .5;
-    opts.noise_scale = .007;
+    opts.noise_scale = .005;
     opts.noise_power = 6.0;
 
     terrain := create_terrain(opts);
+
+    // sky_sphere_mesh := generate_sphere_mesh(mesh_arena, "sky_sphere", 32.0, 16);
 
     old_time := current_time_monotonic();
     while main_loop := true {
@@ -161,23 +165,12 @@ main :: () {
 
         update_entities();
 
-        yaw := quat_from_axis_angle(.{0, 0, 1}, game_delta*0.01);
-        pitch := quat_from_axis_angle(.{1, 0, 0}, game_delta*0.01);
+        yaw := quat_from_axis_angle(.{0, 0, 1}, game_delta*0.02);
+        pitch := quat_from_axis_angle(.{1, 0, 0}, game_delta*0.02);
         rotation := yaw * pitch;
 
         for * :active_entities _Test_Entity {
-            cycle := fmod_cycling(game_time, 5.0);
-            if cycle < 2.5 {
-                it.dp = .{0.0, 0.3, 0.0};
-            } else {
-                it.dp = .{0.0, -0.3, 0.0};
-            }
-
             it.rotation *= rotation;
-
-            if game_time > 10.0 {
-                // remove_entity(it);
-            }
         }
 
         //~ render
@@ -188,22 +181,15 @@ main :: () {
         render_entities(*mesh_batcher);
         render_terrain(*mesh_batcher, terrain, .[]);
 
-        vert_constants: Mesh_Vertex_Constants;
-        vert_constants.view = camera.view;
-        vert_constants.projection = camera.projection;
-
-        frag_constants: Mesh_Fragment_Constants;
-        frag_constants.camera_position = v4(camera.position, 0.0);
-        frag_constants.camera_direction = v4(camera.view[3].xyz, 0.0);
-        frag_constants.directional_light_dir = .{0.0, -0.94, -0.30, 0};
-        frag_constants.directional_light_colour = .{1.0, 0.9, 0.7, 1.0};
-        frag_constants.light_params = .{0.3, 1.0, 1.0, 2.0};
-        frag_constants.time = .{real_time, sin(real_time), game_time, sin(game_time)};
-
         scene: Render_Scene;
         scene.mesh_batcher = mesh_batcher;
-        scene.mesh_vert_constants = vert_constants;
-        scene.mesh_frag_constants = frag_constants;
+        scene.camera = camera;
+
+        scene.sun = .{
+            direction = .{0.0, -0.94, -0.30},
+            params = .{0.3, 1.0, 1.0, 2.0},
+            colour = .{1.0, 0.9, 0.7, 1.0}
+        };
 
         render_scene(scene);
 

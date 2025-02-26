@@ -44,6 +44,7 @@ render_terrain :: (batcher: *Render_Batcher, terrain: Terrain, layers: [] Terrai
     for terrain.meshes {
         command: Render_Command;
         command.shader = .TERRAIN;
+        // command.flags = .NO_CAST_SHADOW;
         command.mesh = it.mesh;
         command.textures = push_view(context.temp_arena, *Texture.[
             load_texture("grass_diffuse"),
@@ -69,8 +70,6 @@ Terrain_Mesh :: struct {
 }
 
 create_terrain_mesh :: (opts: Terrain_Options) -> *Mesh {
-    profile_scope("create_terrain_mesh");
-
     n := (1 << opts.subdivisions) + 1;
     vertex_count := n*n;
 
@@ -102,8 +101,6 @@ create_terrain_mesh :: (opts: Terrain_Options) -> *Mesh {
 
     indices := arena_to_view(context.temp_arena, u32, index_mark);
 
-    print("terrain mesh has % verts and % indices (% tris)\n", vertex_count, indices.count, indices.count/3);
-
     apply_terrain_noise(opts, n, positions);
 
     data: Mesh_Data;
@@ -111,7 +108,7 @@ create_terrain_mesh :: (opts: Terrain_Options) -> *Mesh {
     data.tex_coords = tex_coords;
     data.indices = indices;
 
-    return create_mesh(tprint("plane_%x%", n, n), data);
+    return create_mesh(terrain_arena, tprint("plane_%x%", n, n), data);
 }
 
 apply_terrain_noise :: (opts: Terrain_Options, n: int, positions: [] Vec3) {

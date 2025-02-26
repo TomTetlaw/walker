@@ -32,12 +32,12 @@ load_mesh :: (name: string) -> *Mesh {
     return fallback_mesh;
 }
 
-create_mesh :: (name: string, data: Mesh_Data) -> *Mesh {
+create_mesh :: (arena: *Arena, name: string, data: Mesh_Data) -> *Mesh {
     if data.positions.count <= 0 return fallback_mesh;
 
     mesh: Mesh;
-    mesh.name = push_string(mesh_arena, name);
-    mesh.positions = push_view(mesh_arena, data.positions);
+    mesh.name = push_string(arena, name);
+    mesh.positions = push_view(arena, data.positions);
 
     if data.indices.count > 0 {
         mesh.num_indices = data.indices.count;
@@ -64,17 +64,21 @@ init_mesh_system :: () {
     mesh_arena = make_arena();
 
     fallback_data: Mesh_Data;
-    fallback_data.positions = push_view(mesh_arena, Vec3.[
+    fallback_data.positions = push_view(context.temp_arena, Vec3.[
         .{0, -0.5, 0}, .{0, -0.5, 0}, .{0, 0, 0.5}
     ]);
-    fallback_data.colours = push_view(mesh_arena, Linear_Colour.[
+    fallback_data.colours = push_view(context.temp_arena, Linear_Colour.[
         colour_black, colour_black, colour_black
     ]);
-    fallback_mesh = create_mesh("fallback", fallback_data);
+    fallback_mesh = create_mesh(mesh_arena, "fallback", fallback_data);
     if !fallback_mesh fatal_error("Failed to create fallback mesh");
 
-    cube_data: Mesh_Data;
-    cube_data.positions = push_view(mesh_arena, Vec3.[
+    cube_mesh = generate_cube_mesh(mesh_arena, "unit_cube");
+}
+
+generate_cube_mesh :: (arena: *Arena, name: string) -> *Mesh {
+    data: Mesh_Data;
+    data.positions = push_view(context.temp_arena, Vec3.[
         .{-0.5, -0.5,  0.5}, .{ 0.5, -0.5,  0.5}, .{ 0.5,  0.5,  0.5},
         .{ 0.5,  0.5,  0.5}, .{-0.5,  0.5,  0.5}, .{-0.5, -0.5,  0.5},
 
@@ -94,7 +98,7 @@ init_mesh_system :: () {
         .{ 0.5, -0.5,  0.5}, .{-0.5, -0.5,  0.5}, .{-0.5, -0.5, -0.5}
     ]);
 
-    cube_data.colours = push_view(mesh_arena, Linear_Colour.[
+    data.colours = push_view(context.temp_arena, Linear_Colour.[
         colour_red, colour_red, colour_red,
         colour_red, colour_red, colour_red,
 
@@ -114,7 +118,7 @@ init_mesh_system :: () {
         colour_cyan, colour_cyan, colour_cyan,
     ]);
 
-    cube_data.tex_coords = push_view(mesh_arena, Vec2.[
+    data.tex_coords = push_view(context.temp_arena, Vec2.[
         .{0.0, 0.0}, .{1.0, 0.0}, .{1.0, 1.0},
         .{1.0, 1.0}, .{0.0, 1.0}, .{0.0, 0.0},
 
@@ -134,7 +138,7 @@ init_mesh_system :: () {
         .{1.0, 1.0}, .{0.0, 1.0}, .{0.0, 0.0}
     ]);
 
-    cube_data.normals = push_view(mesh_arena, Vec3.[
+    data.normals = push_view(context.temp_arena, Vec3.[
         .{ 0.0,  0.0,  1.0}, .{ 0.0,  0.0,  1.0}, .{ 0.0,  0.0,  1.0},
         .{ 0.0,  0.0,  1.0}, .{ 0.0,  0.0,  1.0}, .{ 0.0,  0.0,  1.0},
 
@@ -154,7 +158,7 @@ init_mesh_system :: () {
         .{ 0.0, -1.0,  0.0}, .{ 0.0, -1.0,  0.0}, .{ 0.0, -1.0,  0.0}
     ]);
 
-    cube_data.tangents = push_view(mesh_arena, Vec3.[
+    data.tangents = push_view(context.temp_arena, Vec3.[
         .{ 1.0,  0.0,  0.0}, .{ 1.0,  0.0,  0.0}, .{ 1.0,  0.0,  0.0},
         .{ 1.0,  0.0,  0.0}, .{ 1.0,  0.0,  0.0}, .{ 1.0,  0.0,  0.0},
 
@@ -174,10 +178,59 @@ init_mesh_system :: () {
         .{ 1.0,  0.0,  0.0}, .{ 1.0,  0.0,  0.0}, .{ 1.0,  0.0,  0.0}
     ]);
 
-    cube_data.indices = push_view(mesh_arena, u32, 36);
-    for 0..35 cube_data.indices[it] = xx it;
+    data.indices = push_view(context.temp_arena, u32, 36);
+    for 0..35 data.indices[it] = xx it;
 
-    cube_mesh = create_mesh("cube", cube_data);
+    return create_mesh(arena, name, data);
+}
+
+generate_sphere_mesh :: (arena: *Arena, name: string, radius: float, segments: int) -> *Mesh {
+    vert_count := (segments + 1) * (segments + 1);
+    positions := push_view(context.temp_arena, Vec3, vert_count);
+
+    for lat: 0..segments {
+        theta := cast(float) lat / segments;
+        sin_theta := sin_turns(theta);
+        cos_theta := cos_turns(theta);
+
+        for lon: 0..segments {
+            phi := cast(float) (lon * 2) / segments;
+            sin_phi := sin_turns(phi);
+            cos_phi := cos_turns(phi);
+
+            index := lat + lon*(segments + 1);
+
+            positions[index].x = radius * sin_theta * cos_phi;
+            positions[index].y = radius * cos_theta;
+            positions[index].z = radius * sin_theta * sin_phi;
+        }
+    }
+
+    tri_count := segments * segments * 2;
+    indices := push_view(context.temp_arena, u32, tri_count * 3);
+
+    cursor := 0;
+    for lat: 0..segments-1 for lon: 0..segments-1 {
+        top_left := lat * (segments + 1) + lon;
+        top_right := top_left + 1;
+        bottom_left := (lat + 1) * (segments + 1) + lon;
+        bottom_right := bottom_left + 1;
+
+        indices[cursor + 0] = cast(u32) top_left;
+        indices[cursor + 1] = cast(u32) bottom_left;
+        indices[cursor + 2] = cast(u32) top_right;
+
+        indices[cursor + 3] = cast(u32) top_right;
+        indices[cursor + 4] = cast(u32) bottom_left;
+        indices[cursor + 5] = cast(u32) bottom_right;
+
+        cursor += 6;
+    }
+
+    data: Mesh_Data;
+    data.positions = positions;
+    data.indices = indices;
+    return create_mesh(arena, name, data);
 }
 
 recreate_mesh :: (mesh: *Mesh, data: Mesh_Data) {
@@ -191,18 +244,15 @@ recreate_mesh :: (mesh: *Mesh, data: Mesh_Data) {
 }
 
 cube_mesh: *Mesh;
+mesh_arena: *Arena;
 
 #scope_file
-
-mesh_arena: *Arena;
 
 fallback_mesh: *Mesh;
 
 meshes: Bucket_Array(Mesh);
 
 create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
-    profile_scope("create_buffers");
-
     generate_normals := true;
     generate_tangents := true;
 

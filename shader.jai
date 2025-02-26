@@ -5,7 +5,7 @@ Shader :: struct {
     name: string;
     vertex, fragment: *SDL_GPUShader;
 
-    pipelines: Linked_List(Pipeline);
+    pipelines: [..] *Pipeline;
 }
 
 init_shader_system :: () {
@@ -223,8 +223,8 @@ reload_shader :: (shader: *Shader) {
 
     reloaded := load_shader(shader.name, true);
 
-    for * shader.pipelines {
-        it.shader = reloaded;
+    for shader.pipelines {
+        it.shader = reloaded; // incase load_shader returns a stub
         recreate_pipeline(it);
     }
 
