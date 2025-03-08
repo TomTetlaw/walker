@@ -3,6 +3,10 @@ Vec2 :: struct {
     x, y: float;
 }
 
+Vec2i :: struct {
+    x, y: int;
+}
+
 Vec3 :: struct {
     x, y, z: float;
 
@@ -35,31 +39,46 @@ Vec4 :: struct {
 v2 :: (xy: float) -> Vec2 { return .{xy, xy}; }
 v3 :: (xyz: float) -> Vec3 { return .{xyz, xyz, xyz}; }
 v3 :: (xy: Vec2, z: float) -> Vec3 { return .{xy.x, xy.y, z}; }
+v3 :: (x: float, yz: Vec2) -> Vec3 { return .{x, yz.x, yz.y}; }
+v4 :: (x: float, y: float, z: float, w: float) -> Vec4 { return .{x, y, z, w}; }
 v4 :: (xyzw: float) -> Vec4 { return .{xyzw, xyzw, xyzw, xyzw}; }
 v4 :: (xy: Vec2, z: float, w: float) -> Vec4 { return .{xy.x, xy.y, z, w}; }
 v4 :: (xyz: Vec3, w: float) -> Vec4 { return .{xyz.x, xyz.y, xyz.z, w}; }
 
-operator *[] :: (v: *Vec2, $i: int) -> *float {
-#if i == 0 return *v.x;
-    else #if i == 1 return *v.y;
-    else #assert(false);
+v2 :: (v: Vec2i) -> Vec2 { return .{cast(float) v.x, cast(float) v.y}; }
+v2i :: (v: Vec2) -> Vec2i { return .{cast(int) v.x, cast(int) v.y}; }
+
+operator *[] :: (v: *Vec2, i: int) -> *float {
+    if i == 0 return *v.x;
+    else if i == 1 return *v.y;
+    else {
+        assert(false);
+        return null;
+    }
 }
 
-operator *[] :: (v: *Vec3, $i: int) -> *float {
-#if i == 0 return *v.x;
-    else #if i == 1 return *v.y;
-    else #if i == 2 return *v.z;
-    else #assert(false);
+operator *[] :: (v: *Vec3, i: int) -> *float {
+    if i == 0 return *v.x;
+    else if i == 1 return *v.y;
+    else if i == 2 return *v.z;
+    else {
+        assert(false);
+        return null;
+    }
 }
 
-operator *[] :: (v: *Vec4, $i: int) -> *float {
-#if i == 0 return *v.x;
-    else #if i == 1 return *v.y;
-    else #if i == 2 return *v.z;
-    else #if i == 3 return *v.w;
-    else #assert(false);
+operator *[] :: (v: *Vec4, i: int) -> *float {
+    if i == 0 return *v.x;
+    else if i == 1 return *v.y;
+    else if i == 2 return *v.z;
+    else if i == 3 return *v.w;
+    else {
+        assert(false);
+        return null;
+    }
 }
 
+operator + :: inline (a: Vec2i, b: Vec2i) -> Vec2i #symmetric { return .{a.x + b.x, a.y + b.y}; }
 operator + :: inline (a: Vec2, b: Vec2) -> Vec2 #symmetric { return .{a.x + b.x, a.y + b.y}; }
 operator + :: inline (a: Vec3, b: Vec3) -> Vec3 #symmetric { return .{a.x + b.x, a.y + b.y, a.z + b.z}; }
 operator + :: inline (a: Vec4, b: Vec4) -> Vec4 #symmetric { return .{a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w}; }
@@ -212,4 +231,138 @@ angle_between :: (a: Vec2, b: Vec2) -> float {
     if length_b == 0.0 return 0.0;
 
     return acos(dot_product(a, b) / (length_a * length_b)) * rad2turn;
+}
+
+floor :: (v: Vec2) -> Vec2 {
+    return .{floor(v.x), floor(v.y)};
+}
+
+floor :: (v: Vec3) -> Vec3 {
+    return .{floor(v.x), floor(v.y), floor(v.z)};
+}
+
+floor :: (v: Vec4) -> Vec4 {
+    return .{floor(v.x), floor(v.y), floor(v.z), floor(v.w)};
+}
+
+frac :: (v: Vec2) -> Vec2 {
+    return .{frac(v.x), frac(v.y)};
+}
+
+frac :: (v: Vec3) -> Vec3 {
+    return .{frac(v.x), frac(v.y), frac(v.z)};
+}
+
+frac :: (v: Vec4) -> Vec4 {
+    return .{frac(v.x), frac(v.y), frac(v.z), frac(v.w)};
+}
+
+random_unit_vec2 :: () -> Vec2 {
+    x := random_01();
+    y := random_01();
+    return normalize(Vec2.{x, y});
+}
+
+random_unit_vec3 :: () -> Vec3 {
+    x := random_01();
+    y := random_01();
+    z := random_01();
+    return normalize(Vec3.{x, y, z});
+}
+
+random_unit_vec4 :: () -> Vec4 {
+    x := random_01();
+    y := random_01();
+    z := random_01();
+    w := random_01();
+    return normalize(Vec4.{x, y, z, w});
+}
+
+// white noise hash
+vec2_hash :: (v: Vec2) -> Vec2 {
+    x := Vec2.{dot_product(v, Vec2.{127.1, 311.7}), dot_product(v, Vec2.{269.5, 183.3})};
+    return frac(sin(x) * 43758.545);
+}
+
+sin :: (v: Vec2) -> Vec2 {
+    return .{sin(v.x), sin(v.y)};
+}
+
+Vec3x8 :: struct {
+    x: [8] float;
+    y: [8] float;
+    z: [8] float;
+}
+
+make_float8 :: (f: float) -> [8] float {
+    return .[f, f, f, f, f, f, f, f];
+}
+
+make_float8 :: (f0: float, f1: float, f2: float, f3: float, f4: float, f5: float, f6: float, f7: float) -> [8] float {
+    return .[f0, f1, f2, f3, f4, f5, f6, f7];
+}
+
+pack_vector3_soa :: (arena: *Arena, vectors: [] Vec3) -> [] Vec3x8 {
+    count := vectors.count;
+    packed_count := ((count / 8) + 7) & ~7;
+
+    packed := push_view(arena, Vec3x8, packed_count);
+    for p: 0..packed_count-1 {
+        max_index := clamp(count - p*8 - 1, 0, 7);
+        for i: 0..max_index {
+            packed[p].x[i] = vectors[p*8 + i].x;
+            packed[p].y[i] = vectors[p*8 + i].y;
+            packed[p].z[i] = vectors[p*8 + i].z;
+        }
+    }
+
+    return packed;
+}
+
+unpack_vector3_soa :: (packed: [] Vec3x8, dest: [] Vec3) {
+    count := dest.count;
+    packed_count := packed.count;
+
+    for p: 0..packed_count-1 {
+        max_index := clamp(count - p*8 - 1, 0, 7);
+        for i: 0..max_index {
+            dest[p*8 + i].x = packed[p].x[i];
+            dest[p*8 + i].y = packed[p].y[i];
+            dest[p*8 + i].z = packed[p].z[i];
+        }
+    }
+}
+
+Vec2x8 :: struct {
+    x: [8] float;
+    y: [8] float;
+}
+
+pack_vector2_soa :: (arena: *Arena, vectors: [] Vec2) -> [] Vec2x8 {
+    count := vectors.count;
+    packed_count := (count + 7) & ~7;
+
+    packed := push_view(arena, Vec2x8, packed_count);
+    for p: 0..packed_count-1 {
+        max_index := min(0, count - p*8);
+        for i: 0..max_index-1 {
+            packed[p].x[i] = vectors[p*8 + i].x;
+            packed[p].y[i] = vectors[p*8 + i].y;
+        }
+    }
+
+    return packed;
+}
+
+unpack_vector2_soa :: (packed: [] Vec2x8, dest: [] Vec2) {
+    count := dest.count;
+    packed_count := packed.count;
+
+    for p: 0..packed_count-1 {
+        max_index := min(0, count - p*8);
+        for i: 0..max_index-1 {
+            dest[p*8 + i].x = packed[p].x[i];
+            dest[p*8 + i].y = packed[p].y[i];
+        }
+    }
 }

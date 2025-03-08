@@ -1,3 +1,4 @@
+
 float3x3 adjoint(float4x4 m) {
     return float3x3(cross(m[1].xyz, m[2].xyz), cross(m[2].xyz, m[0].xyz), cross(m[0].xyz, m[1].xyz));
 }
@@ -36,27 +37,44 @@ float4 fractal_texture_mip(Texture2D map, SamplerState sampler, float2 tex_coord
 #define SHADOW_CASCADE_COUNT 4
 
 struct Intermediates {
+    float4 time;
+
+	float3 local_position;
 	float3 world_position;
 	float3 view_position;
 
+	float2 tex_coord;
+
 	float3 normal;
+	float3 tangent;
 	float3 vertex_normal;
 	float3 colour;
 
 	float3 camera_position;
 	float3 camera_direction;
+	
+	float depth;
 
 	float shadow;
 	float2 shadow_tex_coord;
-
-	float4 time;
+	float lightspace_depth;
+    float shadowmap_depth;
+    int cascade_layer;
 
 	float4 cascades;
 	float4x4 light_matrices[SHADOW_CASCADE_COUNT];
 	Texture2DArray<float> shadow_textures;
 	SamplerState shadow_sampler;
-	int layer;
+	float3 proj_coords;
 };
+
+float3 unpack_normal(Intermediates intermediates, float4 normal_sample) {
+	float3x3 tbn = float3x3(intermediates.tangent, cross(intermediates.normal, intermediates.tangent), intermediates.normal);
+	
+	float3 normal = normal_sample.rgb * 2 - 1;
+	normal = normalize(mul(tbn, normal));
+	return normal;
+}
 
 struct Light {
 	float3 direction;
@@ -165,58 +183,6 @@ float fractal_noise_2d(float2 p, int octaves, float persistence) {
 	return saturate(total / max_value);
 }
 
-void apply_fog(inout Intermediates intermediates, Light light) {
-    float a = 0.001;
-    float b = 0.001;
-    float height_b = 0.0002;
-    const int NUM_SAMPLES = 16;
-
-    float distance = length(intermediates.camera_position - intermediates.world_position);
-    float3 view = normalize(intermediates.camera_position - intermediates.world_position);
-
-    float eye_height = intermediates.camera_position.z;
-    float view_z = view.z;
-
-    float base_fog_amount = (a / b) * exp(-eye_height * b) * (1.0 - exp(-distance * view_z * b)) / view_z;
-
-    float accumulated_density = 0.0;
-    float step_size = distance / NUM_SAMPLES;
-	float3 ray_start = intermediates.world_position;
-	float3 ray_dir = -view;
-    float noise_scale = .002;
-
-    for (int i = 0; i < NUM_SAMPLES; i++) {
-        float t = step_size * (i + 0.5);
-        float3 sample_pos = ray_start + ray_dir * t;
-
-		float fog_speed = 100;
-		sample_pos -= intermediates.time.x * fog_speed * .125;
-		sample_pos.z += intermediates.time.x * fog_speed;
-
-		float3 p = sample_pos*noise_scale;
-
-        float noise_val = fractal_noise_3d(p, 3, 1);
-
-		float min_a = 0.05;
-        float local_density = a * (min_a + noise_val * (1 - min_a));
-
-		float height_factor = exp(-max(ray_start.z, 0.0) * height_b);
-		accumulated_density *= height_factor;
-
-		// accumulated_density *= 0.25 * (1 - intermediates.shadow);
-
-        accumulated_density += local_density * step_size;
-    }
-
-    float fog_amount = saturate(accumulated_density);
-
-    float sun_amount = max(dot(view, light.direction), 0.0);
-
-    float3 fog_colour = lerp(float3(0.7, 0.7, 0.7), light.colour, pow(sun_amount, 8.0));
-
-    intermediates.colour = lerp(intermediates.colour, fog_colour, fog_amount);
-}
-
 void apply_lighting_directional(inout Intermediates intermediates, Light light) {
 	float3 L = normalize(-light.direction);
 	float3 V = normalize(intermediates.camera_position - intermediates.world_position);
@@ -230,8 +196,8 @@ void apply_lighting_directional(inout Intermediates intermediates, Light light) 
 	intermediates.colour = intermediates.colour * light.colour * lighting;
 }
 
-float calculate_shadow(inout    Intermediates intermediates, Light light) {
-    float view_depth = length(intermediates.camera_position - intermediates.world_position);
+float calculate_shadow_at(inout Intermediates intermediates, Light light, float3 world_position) {
+    float view_depth = intermediates.view_position.x;
 
     int layer = -1;
     for (int i = 0; i < SHADOW_CASCADE_COUNT; i++) {
@@ -245,14 +211,15 @@ float calculate_shadow(inout    Intermediates intermediates, Light light) {
         return 0.0;
     }
 
-    intermediates.layer = layer;
+    intermediates.cascade_layer = layer;
 
-    float4 lightspace_position = mul(intermediates.light_matrices[layer], float4(intermediates.world_position, 1));
+    float4 lightspace_position = mul(intermediates.light_matrices[layer], float4(world_position, 1));
     float3 proj_coords = lightspace_position.xyz;
-    proj_coords = proj_coords * 0.5 + 0.5;
-    proj_coords.y = 1.0 - proj_coords.y;
 
-    float depth = proj_coords.z;
+    float depth = proj_coords.x;
+	
+	intermediates.proj_coords = proj_coords;
+    intermediates.lightspace_depth = depth;
 
     if (depth > 1.0) {
         return 0;
@@ -262,23 +229,78 @@ float calculate_shadow(inout    Intermediates intermediates, Light light) {
     float bias = max(min_bias * 10.0 * (1.0 - dot(intermediates.normal, light.direction)), min_bias);
     bias *= 1.0 / (intermediates.cascades[layer] * 0.5f);
 
-    uint w, h, e;
-    intermediates.shadow_textures.GetDimensions(w, h, e);
-    float2 texel_size = 1.0 / float2(w, h);
+    float3 sample_coord = float3(proj_coords.yz, layer);
+    float shadowmap_depth = intermediates.shadow_textures.Sample(intermediates.shadow_sampler, sample_coord).r;
 
-    float shadow = 0.0;
-    for (int x = -1; x <= 1; x++) {
-        for (int y = -1; y <= 1; y++) {
-            float3 sample_coord = float3(proj_coords.xy + float2(x, y) * texel_size, layer);
-            float pcf_depth = intermediates.shadow_textures.Sample(intermediates.shadow_sampler, sample_coord).r;
-            shadow += (depth - bias) > pcf_depth ? 1.0 : 0.0;
-        }
-    }
-    shadow /= 9;
+    float shadow = (depth - bias) > shadowmap_depth ? 1.0 : 0.0;
+
+    intermediates.shadowmap_depth = shadowmap_depth;
 
     return shadow;
 }
 
+float calculate_shadow(inout Intermediates intermediates, Light light) {
+    return calculate_shadow_at(intermediates, light, intermediates.world_position);
+}
+
 void apply_shadow(inout Intermediates intermediates, Light light) {
 	intermediates.shadow = calculate_shadow(intermediates, light);
+}
+
+void apply_fog(inout Intermediates intermediates, Light light) {
+    float a = 0.0005;
+    float b = 0.001;
+    float height_b = 0.0003;
+    const int NUM_SAMPLES = 32;
+
+    float distance = length(intermediates.camera_position - intermediates.world_position);
+    float3 view = normalize(intermediates.camera_position - intermediates.world_position);
+
+    float eye_height = intermediates.camera_position.z;
+    float view_z = view.z;
+
+    float base_fog_amount = (a / b) * exp(-eye_height * b) * (1.0 - exp(-distance * view_z * b)) / view_z;
+
+    float accumulated_density = 0.0;
+    float step_size = distance / NUM_SAMPLES;
+	float3 ray_start = intermediates.world_position;
+	float3 ray_dir = -view;
+
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        float t = step_size * (i + 0.5);
+        float3 sample_pos = ray_start + ray_dir * t;
+
+		float height_factor = exp(-max(ray_start.z, 0.0) * height_b);
+		accumulated_density *= height_factor;
+
+        accumulated_density += a * step_size;
+    }
+
+    float fog_amount = saturate(accumulated_density);
+
+    float sun_amount = max(dot(view, light.direction), 0.0);
+
+    float3 fog_colour = lerp(float3(0.7, 0.7, 0.7), light.colour, pow(sun_amount, 8.0));
+
+    intermediates.colour = lerp(intermediates.colour, fog_colour, fog_amount);
+}
+
+void apply_debug(inout Intermediates intermediates) {
+	// intermediates.colour *= 50;
+	// intermediates.colour =  float3(intermediates.tex_coord, 0);
+	// intermediates.colour = float3(intermediates.proj_coords.y, 0, 0);
+/*
+    if (intermediates.cascade_layer == 0) {
+        return float4(1, 0, 0, debug_a);
+    }
+    if (intermediates.cascade_layer == 1) {
+        return float4(0, 1, 0, debug_a);
+    }
+    if (intermediates.cascade_layer == 2) {
+        return float4(0, 0, 1, debug_a);
+    }
+    if (intermediates.cascade_layer == 3) {
+        return float4(1, 1, 0, debug_a);
+    }
+*/
 }

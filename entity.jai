@@ -51,13 +51,17 @@ make_entity :: ($T: Type) -> *T {
 
     entity.mesh = load_mesh(entity.default_mesh_name);
 
-    textures := push_array(entity_arena, *Texture);
+    textures := tarray(*Texture);
     for entity.default_texture_names {
-        if it.count > 0 array_add(*textures, load_texture(it));
+        if it.count > 0 {
+            array_add(*textures, load_texture(it));
+        }
     }
 
     entity.textures = push_view(entity_arena, *Texture, textures.count);
-    for textures entity.textures[it_index] = it;
+    for textures {
+        entity.textures[it_index] = it;
+    }
 
     next_entity_id += 1;
     total_entity_count += 1;
@@ -106,14 +110,14 @@ update_entities :: () {
     simulate_physics();
 }
 
-render_entities :: (batcher: *Render_Batcher) {
+render_entities :: () {
     for entity_list {
-        command: Render_Command;
+        command: Mesh_Render_Command;
         command.shader = .STATIC_MESH;
         command.mesh = it.mesh;
         command.textures = it.textures;
         command.transform = mat4_translation(it.draw_p) * mat4_scale(it.scale) * mat4_rotation(it.rotation);
-        add_render_command(batcher, command);
+        add_mesh_render_command(command);
     }
 }
 
@@ -127,9 +131,9 @@ active_entities :: (array: Bucket_Array($T), body: Code, flags: For_Flags) #expa
     }
 }
 
-#scope_file
-
 entity_arena: *Arena;
+
+#scope_file
 
 total_entity_count: int;
 next_entity_id: int;

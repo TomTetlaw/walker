@@ -90,28 +90,19 @@ main :: () {
 
     camera: Flying_Camera;
 
-    for y: -5..5 for x: -5..5 {
+    for y: -10..10 for x: -10..10 {
         e := make_entity(Test_Entity);
-        e.p = .{cast(float) x * 100, cast(float) y * 100, 35};
+        e.p = .{cast(float) x * 100, cast(float) y * 100, 55};
         e.scale = v3(15);
         e.mesh = cube_mesh;
         spawn_entity(e);
     }
 
     opts: Terrain_Options;
-    opts.subdivisions = 8;
+    opts.subdivisions = 6;
     opts.size = v2(10000.0);
-    opts.height_scale = 1000.0;
-
-    opts.noise_seed = to_milliseconds(current_time_monotonic());
-    opts.noise_octaves = 10;
-    opts.noise_persistence = .5;
-    opts.noise_scale = .005;
-    opts.noise_power = 6.0;
 
     terrain := create_terrain(opts);
-
-    // sky_sphere_mesh := generate_sphere_mesh(mesh_arena, "sky_sphere", 32.0, 16);
 
     old_time := current_time_monotonic();
     while main_loop := true {
@@ -175,18 +166,15 @@ main :: () {
 
         //~ render
 
-        mesh_batcher: Render_Batcher;
-        init_render_batcher(*mesh_batcher);
+        renderer_begin_frame();
 
-        render_entities(*mesh_batcher);
-        render_terrain(*mesh_batcher, terrain, .[]);
+        render_entities();
+        render_terrain(terrain, .[], *camera);
 
         scene: Render_Scene;
-        scene.mesh_batcher = mesh_batcher;
         scene.camera = camera;
-
         scene.sun = .{
-            direction = .{0.0, -0.94, -0.30},
+            direction = normalize(Vec3.{1,1,1} - .{5,5,5}),
             params = .{0.3, 1.0, 1.0, 2.0},
             colour = .{1.0, 0.9, 0.7, 1.0}
         };
@@ -199,6 +187,12 @@ main :: () {
         reset_temporary_storage();
 
         frame_num += 1;
+
+        #if PROFILING {
+            __Tracy.FrameMark();
+        }
+
+        report_sdl_error("main");
     }
 }
 

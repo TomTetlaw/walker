@@ -1,15 +1,14 @@
 
-#include "./shared.hlsl"
-
 struct Frag_Input {
 	float4 position: SV_Position;
-	float3 world_position: TEXCOORD0;
-	float3 view_position: TEXCOORD1;
-	float4 colour: TEXCOORD2;
-	float2 tex_coord: TEXCOORD3;
-	float3 normal: TEXCOORD4;
-	float3 tangent: TEXCOORD5;
-	float4 material_params: TEXCOORD6;
+	float3 local_position: TEXCOORD0;
+	float3 world_position: TEXCOORD1;
+	float3 view_position: TEXCOORD2;
+	float4 colour: TEXCOORD3;
+	float2 tex_coord: TEXCOORD4;
+	float3 normal: TEXCOORD5;
+	float3 tangent: TEXCOORD6;
+	float4 material_params: TEXCOORD7;
 };
 
 struct Instance_Data {
@@ -47,6 +46,7 @@ Frag_Input vert_main(Vertex_Input input, uint instance_id: SV_InstanceId) {
 
 	Frag_Input output;
 	output.position = cs_position;
+	output.local_position = input.position;
 	output.world_position = world_position.xyz;
 	output.view_position = view_position.xyz;
 	output.colour = instance.colour * input.colour;
@@ -77,33 +77,31 @@ cbuffer Constant_Buffer : register(b0, space3) {
 	row_major float4x4 light_matrices[SHADOW_CASCADE_COUNT];
 };
 
+// INSERT_MATERIAL_HERE
+
 float4 frag_main(Frag_Input input): SV_Target {
 	float2 tex_coord = input.tex_coord * input.material_params.xy;
 	
-	float depth = input.position.z / input.position.w;
-	
-	float3 diffuse = input.colour.rgb * diffuse_texture.Sample(diffuse_sampler, tex_coord).rgb;
-
-	float3 tangent = input.tangent;
-	
-	float3 normal = normal_texture.Sample(normal_sampler, tex_coord).rgb * 2 - 1;
-	float3x3 tbn = float3x3(tangent, cross(input.normal, tangent), input.normal);
-	normal = normalize(mul(tbn, normal));
-	
 	Intermediates intermediates;
+	intermediates.local_position = input.local_position;
 	intermediates.world_position = input.world_position;
 	intermediates.view_position = input.view_position;
-	intermediates.normal = normal;
+	intermediates.tex_coord = tex_coord;
+	intermediates.normal = input.normal;
+	intermediates.tangent = input.tangent;
 	intermediates.vertex_normal = input.normal;
-	intermediates.colour = diffuse;
+	intermediates.colour = input.colour.rgb;
 	intermediates.camera_position = camera_position.xyz;
 	intermediates.camera_direction = camera_direction.xyz;
+	intermediates.depth = input.position.z / input.position.w;
 	intermediates.time = time;
 	
 	intermediates.cascades = cascades;
 	intermediates.light_matrices = light_matrices;
 	intermediates.shadow_textures = shadow_textures;
 	intermediates.shadow_sampler = shadow_sampler;
+	
+	material_frag_main(intermediates);
 	
 	Light light;
 	light.direction = light_direction.xyz;
@@ -113,9 +111,16 @@ float4 frag_main(Frag_Input input): SV_Target {
 	light.specular_intensity = light_params.z;
 	light.specular_shininess = light_params.w;
 	
+	#if RECIEVE_LIGHTING
 	apply_shadow(intermediates, light);
 	apply_lighting_directional(intermediates, light);
-	apply_fog(intermediates, light);
+	#endif
 	
-    return float4(intermediates.colour, input.colour.a);
+	#if RECIEVE_FOG
+	apply_fog(intermediates, light);
+	#endif
+	
+	apply_debug(intermediates);
+	
+	return float4(intermediates.colour, input.colour.a);
 }

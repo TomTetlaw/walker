@@ -6,6 +6,10 @@ create_storage_buffer :: (name: string, size: int) -> *SDL_GPUBuffer {
     };
 
     buffer := SDL_CreateGPUBuffer(context.device, *info);
+    if !buffer {
+        report_sdl_error("SDL_CreateGPUBuffer", tprint("%.storage", name));
+    }
+
     SDL_SetGPUBufferName(context.device, buffer, tcs(name));
 
     return buffer;
@@ -18,6 +22,10 @@ create_vertex_buffer :: (name: string, elements: [] $T) -> *SDL_GPUBuffer {
     };
 
     buffer := SDL_CreateGPUBuffer(context.device, *info);
+    if !buffer {
+        report_sdl_error("SDL_CreateGPUBuffer", tprint("%.vertex", name));
+    }
+
     SDL_SetGPUBufferName(context.device, buffer, tcs(name));
 
     upload_to_buffer(buffer, elements);
@@ -32,6 +40,10 @@ create_index_buffer :: (name: string, elements: [] u32) -> *SDL_GPUBuffer {
     };
 
     buffer := SDL_CreateGPUBuffer(context.device, *info);
+    if !buffer {
+        report_sdl_error("SDL_CreateGPUBuffer", tprint("%.index", name));
+    }
+
     SDL_SetGPUBufferName(context.device, buffer, tcs(name));
 
     upload_to_buffer(buffer, elements);
@@ -43,11 +55,22 @@ upload_to_buffer :: (dest: *SDL_GPUBuffer, elements: [] $T) {
     size := size_of(T) * elements.count;
     transfer_buffer := create_transfer_buffer(size);
     mapping := SDL_MapGPUTransferBuffer(context.device, transfer_buffer, false);
+    if !mapping {
+        report_sdl_error("SDL_MapGPUTransferBuffer", "upload_to_buffer");
+    }
+
     memcpy(mapping, elements.data, size);
     SDL_UnmapGPUTransferBuffer(context.device, transfer_buffer);
 
     command_buffer := SDL_AcquireGPUCommandBuffer(context.device);
+    if !command_buffer {
+        report_sdl_error("SDL_AcquireGPUCommandBuffer", "upload_to_buffer");
+    }
+
     copy_pass := SDL_BeginGPUCopyPass(command_buffer);
+    if !copy_pass {
+        report_sdl_error("SDL_BeginGPUCopyPass", "upload_to_buffer");
+    }
 
     location: SDL_GPUTransferBufferLocation;
     location.transfer_buffer = transfer_buffer;
@@ -83,6 +106,10 @@ create_texture_object :: (name: string, width: int, height: int, format: Texture
     create_info.num_levels = xx get_mipmap_count(width, height);
     create_info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
     texture_object := SDL_CreateGPUTexture(context.device, *create_info);
+    if !texture_object {
+        report_sdl_error("SDL_CreateGPUTexture", "texture_object");
+    }
+
     SDL_SetGPUTextureName(context.device, texture_object, tcs(name));
     return texture_object;
 }
@@ -92,6 +119,10 @@ upload_texture :: (dest: *SDL_GPUTexture, pixels: *u8, width: int, height: int, 
     transfer_buffer := create_transfer_buffer(size);
 
     mapping := SDL_MapGPUTransferBuffer(context.device, transfer_buffer, false);
+    if !mapping {
+        report_sdl_error("SDL_MapGPUTransferBuffer", "upload_texture");
+    }
+
     memcpy(mapping, pixels, size);
     SDL_UnmapGPUTransferBuffer(context.device, transfer_buffer);
 
@@ -108,7 +139,15 @@ upload_texture :: (dest: *SDL_GPUTexture, pixels: *u8, width: int, height: int, 
     region.d = 1;
 
     command_buffer := SDL_AcquireGPUCommandBuffer(context.device);
+    if !command_buffer {
+        report_sdl_error("SDL_AcquireGPUCommandBuffer", "upload_texture");
+    }
+
     copy_pass := SDL_BeginGPUCopyPass(command_buffer);
+    if !copy_pass {
+        report_sdl_error("SDL_BeginGPUCopyPass", "upload_texture");
+    }
+
     SDL_UploadToGPUTexture(copy_pass, *info, *region, false);
     SDL_EndGPUCopyPass(copy_pass);
 

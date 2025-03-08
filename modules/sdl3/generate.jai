@@ -1,5 +1,5 @@
 
-SDL3_DIR_WINDOWS :: "windows/SDL3-3.2.4";
+SDL3_DIR_WINDOWS :: "windows/SDL3-3.2.8";
 SDL3_SHADERCROSS_DIR_WINDOWS :: "windows/SDL3_shadercross-3.0.0-windows-VC-x64";
 
 visitor :: (decl: *Declaration, parent_decl: *Declaration) -> Declaration_Visit_Result {

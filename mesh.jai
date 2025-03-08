@@ -5,6 +5,7 @@ Mesh :: struct {
     name: string;
     bounds: Bounding_Box;
     positions: [] Vec3;
+    indices: [] u32;
     num_indices: int;
 
     position_buffer: *SDL_GPUBuffer;
@@ -36,7 +37,7 @@ create_mesh :: (arena: *Arena, name: string, data: Mesh_Data) -> *Mesh {
     if data.positions.count <= 0 return fallback_mesh;
 
     mesh: Mesh;
-    mesh.name = push_string(arena, name);
+    mesh.name = copy_string_global(name);
     mesh.positions = push_view(arena, data.positions);
 
     if data.indices.count > 0 {
@@ -99,23 +100,23 @@ generate_cube_mesh :: (arena: *Arena, name: string) -> *Mesh {
     ]);
 
     data.colours = push_view(context.temp_arena, Linear_Colour.[
-        colour_red, colour_red, colour_red,
-        colour_red, colour_red, colour_red,
+        colour_white, colour_white, colour_white,
+        colour_white, colour_white, colour_white,
 
-        colour_yellow, colour_yellow, colour_yellow,
-        colour_yellow, colour_yellow, colour_yellow,
+        colour_white, colour_white, colour_white,
+        colour_white, colour_white, colour_white,
 
-        colour_green, colour_green, colour_green,
-        colour_green, colour_green, colour_green,
+        colour_white, colour_white, colour_white,
+        colour_white, colour_white, colour_white,
 
-        colour_pink, colour_pink, colour_pink,
-        colour_pink, colour_pink, colour_pink,
+        colour_white, colour_white, colour_white,
+        colour_white, colour_white, colour_white,
 
-        colour_blue, colour_blue, colour_blue,
-        colour_blue, colour_blue, colour_blue,
+        colour_white, colour_white, colour_white,
+        colour_white, colour_white, colour_white,
 
-        colour_cyan, colour_cyan, colour_cyan,
-        colour_cyan, colour_cyan, colour_cyan,
+        colour_white, colour_white, colour_white,
+        colour_white, colour_white, colour_white
     ]);
 
     data.tex_coords = push_view(context.temp_arena, Vec2.[
@@ -425,6 +426,8 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
         indices = push_view(context.temp_arena, u32, data.positions.count);
         for * indices it.* = xx it_index;
     }
+
+    mesh.indices = push_view(mesh_arena, indices);
 
     mesh.colour_buffer = create_vertex_buffer(tprint("%_colours", mesh.name), colours);
     mesh.tex_coord_buffer = create_vertex_buffer(tprint("%_tex_coords", mesh.name), tex_coords);

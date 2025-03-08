@@ -1,30 +1,51 @@
 
 build :: () {
+    profiling :: false;
+    release :: false;
+
     workspace := compiler_create_workspace("Walker");
 
-    options := get_build_options(workspace);
-    options.output_executable_name = "walker";
-    options.output_path = "./run_tree";
-    options.text_output_flags = 0;
-    set_build_options(options, workspace);
-
     imports: [..] string;
-    array_add(*imports, "Basic");
-    array_add(*imports, "String");
-    array_add(*imports, "File");
-    array_add(*imports, "sdl3");
-    array_add(*imports, "stb_image");
-    array_add(*imports, "Command_Line");
-    array_add(*imports, "File_Utilities");
-    array_add(*imports, "Hash");
-    array_add(*imports, "File_Watcher");
-    array_add(*imports, "System");
-    array_add(*imports, "Random");
+    array_add(*imports, "Basic", "String", "File", "sdl3", "stb_image",
+        "Command_Line", "File_Utilities", "Hash", "File_Watcher", "System",
+        "Random", "Sort");
 
 #if OS == .WINDOWS array_add(*imports, "Windows");
     else #if OS == .LINUX array_add(*imports, "POSIX");
 
+    lib_files: [..] string;
+    plugin_names: [..] string;
+
+    if profiling {
+        array_add(*plugin_names, "jai-tracy");
+    }
+
+    options := get_build_options(workspace);
+    options.backend = .LLVM;
+    options.output_executable_name = "walker";
+    options.output_path = "./run_tree";
+    options.text_output_flags = 0;
+    options.additional_linker_arguments = lib_files;
+    #if release {
+        set_optimization(*options, .VERY_OPTIMIZED);
+    }
+    set_build_options(options, workspace);
+
+    plugins: [..] *Metaprogram_Plugin;
+    init_plugins(plugin_names, *plugins, workspace);
+
+    intercept_flags: Intercept_Flags;
+    for plugins if it.before_intercept it.before_intercept(it, *intercept_flags);
+
     compiler_begin_intercept(workspace);
+
+    add_build_string(tprint("PROFILING :: %;\n", profiling), workspace);
+
+    if profiling {
+        add_build_string("#import \"jai-tracy\" (IMPORT_MODE=.CLIENT);\n", workspace);
+    }
+
+    for plugins if it.add_source it.add_source(it);
 
     for imports {
         add_build_string(tprint("#import \"%\";\n", it), workspace);
@@ -44,6 +65,7 @@ build :: () {
     entity_types: [..] *Type_Info_Struct;
     while true {
         message := compiler_wait_for_message();
+        for plugins if it.message it.message(it, message);
 
         if message.kind == .TYPECHECKED {
             tc := cast (*Message_Typechecked) message;
@@ -77,6 +99,9 @@ build :: () {
     }
 
     compiler_end_intercept(workspace);
+
+    for plugins if it.finish it.finish(it);
+    for plugins if it.shutdown it.shutdown(it);
 
     set_build_options_dc(.{do_output=false});
 }
@@ -132,3 +157,4 @@ generate_code :: (cg: Code_Gen) -> string {
 #import "String";
 #import "File_Utilities";
 #import "Compiler";
+#import "Metaprogram_Plugins";

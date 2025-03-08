@@ -7,27 +7,27 @@ Arena :: struct {
 
     next, prev: *Arena;
     freed: bool;
-
-    parent: *Arena;
 }
 
 default_reserve_size :: 1024 * 1024 * 1024 * 64;
-default_commit_size :: 1024 * 4;
+default_commit_size :: 1024 * 128;
 
-make_arena :: (reserve := 0, commit := 0, $L := #caller_location) -> *Arena {
+make_arena :: ($L := #caller_location) -> *Arena {
     arena := linked_list_pop(*arena_free_list);
     if arena {
         arena.freed = false;
         arena.used = 0;
+        zero(arena.base, arena.committed);
         return arena;
     }
 
     page_size := get_page_size();
 
     reserve := default_reserve_size + size_of(Arena);
-    commit := default_commit_size + size_of(Arena);
-
     reserve = (reserve + page_size - 1) & ~(page_size - 1);
+
+    commit := default_commit_size + size_of(Arena);
+    commit = (commit + page_size - 1) & ~(page_size - 1);
 
     memory := virtual_reserve(reserve);
     if !memory {
@@ -52,35 +52,7 @@ make_arena :: (reserve := 0, commit := 0, $L := #caller_location) -> *Arena {
 
 reset_arena :: (arena: *Arena) {
     arena.used = 0;
-}
-
-push_child_arena :: (parent: *Arena) -> *Arena #expand {
-    if parent.freed return *stub_arena;
-
-    arena := push_struct(parent, Arena);
-
-    // keep everything aligned to page boundaries
-    aligned_used := (parent.used + page_size - 1) & ~(page_size - 1);
-    diff := aligned_used - parent.used;
-    if diff > 0 {
-        diff_memory := arena_alloc(parent, diff);
-        if !diff_memory return *stub_arena;
-    }
-
-    arena.parent = parent;
-    arena.base = parent.base + parent.used;
-    arena.reserved = parent.reserved - parent.used;
-    arena.committed = parent.committed - parent.used;
-    arena.used = 0;
-
-    return arena;
-}
-
-push_child_arena_defer :: (parent: *Arena) -> *Arena #expand {
-    mark := arena_push_mark(parent);
-    arena := push_scoped_arena(parent);
-    `defer arena_pop_mark(parent, mark);
-    return arena;
+    zero(arena.base, arena.committed);
 }
 
 arena_push_mark :: (arena: *Arena) -> int {
@@ -89,6 +61,7 @@ arena_push_mark :: (arena: *Arena) -> int {
 
 arena_pop_mark :: (arena: *Arena, mark: int) {
     arena.used = mark;
+    zero(arena.base + mark, arena.committed - mark);
 }
 
 make_scoped_arena :: () -> *Arena #expand {
@@ -101,15 +74,13 @@ make_scoped_arena :: () -> *Arena #expand {
 
 free_arena :: (arena: *Arena) {
     if !arena return;
-    if arena.parent return;
 
     arena.freed = true;
     linked_list_add(*arena_free_list, arena);
 }
 
-arena_alloc :: (arena: *Arena, size: int) -> *void {
+arena_alloc :: (arena: *Arena, size: int, $L := #caller_location) -> *void {
     if arena.freed return null;
-    if arena.parent return arena_alloc(arena.parent, size);
 
     page_size := get_page_size();
 
@@ -157,7 +128,7 @@ push_struct :: (arena: *Arena, $T: Type, stub: *T) -> *T {
     if !result return stub;
 
     ini :: initializer_of(T);
-#if ini ini(result);
+    #if ini ini(result);
 
     return result;
 }
@@ -172,10 +143,17 @@ push_struct :: (arena: *Arena, value: $T) -> *T {
     return result;
 }
 
-push_array :: (arena: *Arena, $T: Type, reserve := 0) -> [..] T {
-    result: [..] T;
-    result.allocator = make_arena_allocator(arena);
-    array_reserve(*result, reserve);
+push_structs :: (arena: *Arena, $T: Type, count: int) -> *T {
+    result := arena_alloc(arena, size_of(T) * count);
+    if !result return null;
+
+    ini :: initializer_of(T);
+    #if ini {
+        for 0..count-1 {
+            ini(result + it);
+        }
+    }
+
     return result;
 }
 
@@ -190,7 +168,7 @@ push_view :: (arena: *Arena, $T: Type, count: int) -> [] T {
     result.count = count;
 
     ini :: initializer_of(T);
-#if ini {
+    #if ini {
         for * result ini(it);
     }
 
@@ -218,23 +196,6 @@ arena_count :: inline (arena: *Arena, $T: Type, mark := 0) -> int {
 
 total_reserved_bytes: int;
 total_committed_bytes: int;
-
-make_arena_allocator :: (arena: *Arena) -> Allocator {
-    return .{arena_allocator_proc, arena};
-}
-
-arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s64,
-                         old_memory: *void, allocator_data: *void) -> *void {
-    arena := cast(*Arena) allocator_data;
-
-    if mode == {
-        case .RESIZE; #through;
-        case .ALLOCATE;
-        return arena_alloc(arena, requested_size);
-    }
-
-    return null;
-}
 
 stub_arena :: Arena.{};
 

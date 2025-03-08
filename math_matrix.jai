@@ -6,11 +6,11 @@ Mat4 :: struct {
     _41, _42, _43, _44: float;
 
 #place _11;
-    rows: [4] Vec4 = ---;
+    rows: [4] Vec4;
 #place _11;
-    coef: [4][4] float = ---;
+    coef: [4][4] float;
 #place _11;
-    floats: [16] float = ---;
+    floats: [16] float;
 }
 
 operator *[] :: (m: *Mat4, index: int) -> *Vec4 {
@@ -71,17 +71,6 @@ mat4_translation :: (t: Vec3) -> Mat4 {
     return result;
 }
 
-mat4_translate :: (m: Mat4, v: Vec3) -> Mat4 {
-    result := m;
-
-    result.coef[0][3] += result.coef[0][0]*v.x + result.coef[0][1]*v.y + result.coef[0][2]*v.z;
-    result.coef[1][3] += result.coef[1][0]*v.x + result.coef[1][1]*v.y + result.coef[1][2]*v.z;
-    result.coef[2][3] += result.coef[2][0]*v.x + result.coef[2][1]*v.y + result.coef[2][2]*v.z;
-    result.coef[3][3] += result.coef[3][0]*v.x + result.coef[3][1]*v.y + result.coef[3][2]*v.z;
-
-    return result;
-}
-
 mat4_rotation :: (q: Quaternion) -> Mat4 {
     m := mat4_identity;
     s :: 2.0;
@@ -118,7 +107,7 @@ mat4_rotation :: (q: Quaternion) -> Mat4 {
 }
 
 mat4_scale :: (s: Vec3) -> Mat4 {
-    result: Mat4 = ---;
+    result: Mat4;
 
     result._11 = s.x;
     result._22 = s.y;
@@ -145,23 +134,36 @@ mat4_projection :: (fov_turns: float, aspect: float, near: float, far: float) ->
     result._43 = -1.0;
     result._44 = 0;
 
-    return result * view_coords_to_projection_coords();
+    return result * vulkan_projection_coord_conversion();
 }
 
 mat4_ortho :: (left: float, right: float, bottom: float, top: float, near: float, far: float) -> Mat4 {
     result: Mat4;
 
-    result._11 = 2.0 / (right - left);
-    result._14 = -(right + left) / (right - left);
+    result._11 = 1.0 / (far - near);
+    result._14 = -near / (far - near);
 
-    result._22 = 2.0 / (top - bottom);
-    result._24 = -(top + bottom) / (top - bottom);
+    result._22 = 2.0 / (right - left);
+    result._24 = -(right + left) / (right - left);
 
-    result._33 = -2 / (far - near);
-    result._34 = -(far + near) / (far - near);
+    result._33 = 2.0 / (top - bottom);
+    result._34 = -(top + bottom) / (top - bottom);
 
     result._44 = 1.0;
 
+    return result;
+}
+
+mat4_look_at :: (position: Vec3, target: Vec3, up_dir := Vec3.{0, 0, 1}) -> Mat4 {
+    forward := normalize(target - position);
+    left := normalize(cross_product(up_dir, forward));
+    up := normalize(cross_product(forward, left));
+
+    result: Mat4;
+    result.rows[0] = v4(forward, -dot_product(forward, position));
+    result.rows[1] = v4(left,    -dot_product(left, position));
+    result.rows[2] = v4(up,      -dot_product(up, position));
+    result.rows[3] = .{0, 0, 0, 1};
     return result;
 }
 
@@ -214,64 +216,16 @@ mat4_inverse :: (m: Mat4) -> Mat4, bool {
     return result, abs(det) < epsilon;
 }
 
-mat4_look_at :: (position: Vec3, target: Vec3) -> Mat4 {
-    forward := normalize(target - position);
-    left := normalize(cross_product(.{0, 0, 1}, forward));
-    up := normalize(cross_product(forward, left));
-
-    rotation := mat4_from_rows(left * -1, up, forward * -1);
-    result := mat4_translate(rotation, -position);
-
-    return result;
-}
-
-mat4_from_rows :: (x: Vec3, y: Vec3, z: Vec3) -> Mat4 {
-    result: Mat4;
-
-    result._11 = x.x;
-    result._12 = x.y;
-    result._13 = x.z;
-
-    result._21 = y.x;
-    result._22 = y.y;
-    result._23 = y.z;
-
-    result._31 = z.x;
-    result._32 = z.y;
-    result._33 = z.z;
-
-    result._44 = 1;
-
-    return result;
-}
-
 #scope_file
 
 // thanks to this article!
 // https://johannesugb.github.io/gpu-programming/setting-up-a-proper-vulkan-Projection-matrix/
-view_coords_to_projection_coords :: () -> Mat4 {
+vulkan_projection_coord_conversion :: () -> Mat4 {
     result: Mat4;
 
     result._12 = -1.0;
     result._23 = 1.0;
     result._31 = -1.0;
-    result._44 = 1.0;
-
-    return result;
-}
-
-view_coords_to_ortho_coords :: () -> Mat4 {
-    result: Mat4;
-
-    result._12 = -1.0;
-    result._14 = 1.0;
-
-    result._23 = 1.0;
-    result._24 = 1.0;
-
-    result._31 = -1.0;
-    result._34 = 1.0;
-
     result._44 = 1.0;
 
     return result;

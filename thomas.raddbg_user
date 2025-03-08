@@ -30,14 +30,8 @@ auto_view_rule:
 
 file_path_map:
 {
-  source: "C:/j/msdk0/build/DXC/repo"
-  dest: "C:/Users/Thomas Tetlaw/Downloads/DirectXShaderCompiler-main"
-}
-
-file_path_map:
-{
-  source: "F:/nosferatu/gpu_upload.jai"
-  dest: "F:/nosferatu/gpu_transfer.jai"
+  source: "C:/temp/SDL3-3.2.8"
+  dest: "F:/SDL"
 }
 
 /// windows ///////////////////////////////////////////////////////////////////
@@ -74,20 +68,28 @@ window:
       0.379099:
       {
         output: {project:{"default.raddbg_project"} cursor_line:{ 2} cursor_column:{ 1} mark_line:{ 2} mark_column:{1} }
-        call_stack: {project:{"default.raddbg_project"} }
+        call_stack: {selected project:{"default.raddbg_project"} }
         targets: {project:{"default.raddbg_project"} }
         breakpoints: {project:{"default.raddbg_project"} }
-        disasm: {selected project:{"default.raddbg_project"} }
       }
     }
     0.583693:
     {
-      text: {selected project:{"walker.raddbg_project"} query:{"file:\"renderer.jai\""} cursor_line:{ 703} cursor_column:{ 1} mark_line:{ 703} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"main.jai\""} cursor_line:{ 95} cursor_column:{ 1} mark_line:{ 95} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"entity.jai\""} cursor_line:{ 48} cursor_column:{ 1} mark_line:{ 48} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\".build/.added_strings_w3.jai\""} cursor_line:{ 78} cursor_column:{ 1} mark_line:{ 78} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"math_vector.jai\""} cursor_line:{ 68} cursor_column:{ 1} mark_line:{ 68} mark_column:{1} }
-      text: {project:{"walker.raddbg_project"} query:{"file:\"C:/jai/modules/math/module.jai\""} cursor_line:{ 180} cursor_column:{ 1} mark_line:{ 180} mark_column:{1} }
+      0.66502:
+      {
+        text: {project:{"walker.raddbg_project"} query:{"file:\"renderer.jai\""} cursor_line:{ 296} cursor_column:{ 1} mark_line:{ 296} mark_column:{1} }
+        text: {project:{"walker.raddbg_project"} query:{"file:\"terrain.jai\""} cursor_line:{ 42} cursor_column:{ 25} mark_line:{ 42} mark_column:{25} }
+        text: {project:{"walker.raddbg_project"} query:{"file:\"geometry.jai\""} cursor_line:{ 152} cursor_column:{ 1} mark_line:{ 152} mark_column:{1} }
+        text: {project:{"walker.raddbg_project"} query:{"file:\"math_vector.jai\""} cursor_line:{ 87} cursor_column:{ 1} mark_line:{ 87} mark_column:{1} }
+        text: {project:{"walker.raddbg_project"} query:{"file:\"generation.jai\""} cursor_line:{ 271} cursor_column:{ 1} mark_line:{ 271} mark_column:{1} }
+        text: {project:{"walker.raddbg_project"} query:{"file:\"C:/jai/modules/random.jai\""} cursor_line:{ 74} cursor_column:{ 1} mark_line:{ 74} mark_column:{1} }
+        text: {project:{"walker.raddbg_project"} query:{"file:\"memory.jai\""} cursor_line:{ 27} cursor_column:{ 1} mark_line:{ 27} mark_column:{1} }
+        text: {selected project:{"walker.raddbg_project"} query:{"file:\"noise.jai\""} cursor_line:{ 53} cursor_column:{ 1} mark_line:{ 53} mark_column:{1} }
+      }
+      0.33498:
+      {
+        disasm: {selected project:{"walker.raddbg_project"} }
+      }
     }
   }
 }
@@ -174,11 +176,11 @@ keybindings:
   {"open_project"                            ctrl alt o          }
   {"open"                                    ctrl o              }
   {"open_user"                               ctrl shift alt o    }
-  {"paste"                                   ctrl v              }
   {"paste"                                   shift insert        }
+  {"paste"                                   ctrl v              }
   {"prev_panel"                              ctrl shift comma    }
-  {"prev_tab"                                ctrl page_up        }
   {"prev_tab"                                ctrl shift tab      }
+  {"prev_tab"                                ctrl page_up        }
   {"redo"                                    ctrl y              }
   {"reload_active"                           ctrl shift r        }
   {"restart"                                 ctrl shift f5       }

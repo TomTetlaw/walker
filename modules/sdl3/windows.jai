@@ -116,6 +116,8 @@ SDL_SURFACE_SIMD_ALIGNED :: 0x00000008;
 SDL_PROP_SURFACE_SDR_WHITE_POINT_FLOAT :: "SDL.surface.SDR_white_point";
 SDL_PROP_SURFACE_HDR_HEADROOM_FLOAT :: "SDL.surface.HDR_headroom";
 SDL_PROP_SURFACE_TONEMAP_OPERATOR_STRING :: "SDL.surface.tonemap";
+SDL_PROP_SURFACE_HOTSPOT_X_NUMBER :: "SDL.surface.hotspot.x";
+SDL_PROP_SURFACE_HOTSPOT_Y_NUMBER :: "SDL.surface.hotspot.y";
 
 SDL_CACHELINE_SIZE :: 128;
 
@@ -914,6 +916,8 @@ SDL_HINT_JOYSTICK_WHEEL_DEVICES_EXCLUDED :: "SDL_JOYSTICK_WHEEL_DEVICES_EXCLUDED
 
 SDL_HINT_JOYSTICK_ZERO_CENTERED_DEVICES :: "SDL_JOYSTICK_ZERO_CENTERED_DEVICES";
 
+SDL_HINT_JOYSTICK_HAPTIC_AXES :: "SDL_JOYSTICK_HAPTIC_AXES";
+
 SDL_HINT_KEYCODE_OPTIONS :: "SDL_KEYCODE_OPTIONS";
 
 SDL_HINT_KMSDRM_DEVICE_INDEX :: "SDL_KMSDRM_DEVICE_INDEX";
@@ -1302,11 +1306,15 @@ SDL_MAJOR_VERSION :: 3;
 
 SDL_MINOR_VERSION :: 2;
 
-SDL_MICRO_VERSION :: 4;
+SDL_MICRO_VERSION :: 8;
 
 SDL_SHADERCROSS_MAJOR_VERSION :: 3;
 SDL_SHADERCROSS_MINOR_VERSION :: 0;
 SDL_SHADERCROSS_MICRO_VERSION :: 0;
+
+SDL_SHADERCROSS_PROP_SPIRV_PSSL_COMPATIBILITY :: "SDL.shadercross.spirv.pssl.compatibility";
+
+SDL_SHADERCROSS_PROP_SPIRV_MSL_VERSION :: "SDL.shadercross.spirv.msl.version";
 
 _iobuf :: struct {
     _Placeholder: *void;
@@ -4079,14 +4087,14 @@ SDL_asprintf :: (strp: **u8, fmt: string, __args: ..Any) -> s32 {
 /**
 * Seeds the pseudo-random number generator.
 *
-* Reusing the seed number will cause SDL_rand_*() to repeat the same stream
-* of 'random' numbers.
+* Reusing the seed number will cause SDL_rand() to repeat the same stream of
+* 'random' numbers.
 *
 * \param seed the value to use as a random number seed, or 0 to use
 *             SDL_GetPerformanceCounter().
 *
 * \threadsafety This should be called on the same thread that calls
-*               SDL_rand*()
+*               SDL_rand()
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -11761,6 +11769,8 @@ SDL_PixelFormat :: enum s32 {
 
     EXTERNAL_OES  :: 542328143;
 
+    MJPG          :: 1196444237;
+
     RGBA32        :: 376840196;
     ARGB32        :: 377888772;
     BGRA32        :: 372645892;
@@ -11896,6 +11906,8 @@ SDL_PixelFormat :: enum s32 {
     SDL_PIXELFORMAT_P010          :: P010;
 
     SDL_PIXELFORMAT_EXTERNAL_OES  :: EXTERNAL_OES;
+
+    SDL_PIXELFORMAT_MJPG          :: MJPG;
 
     SDL_PIXELFORMAT_RGBA32        :: RGBA32;
     SDL_PIXELFORMAT_ARGB32        :: ARGB32;
@@ -12778,6 +12790,9 @@ SDL_FlipMode :: enum s32 {
 * format with a pitch of 32 would consist of 32x32 bytes of Y plane followed
 * by 32x16 bytes of UV plane.
 *
+* When a surface holds MJPG format data, pixels points at the compressed JPEG
+* image and pitch is the length of that data.
+*
 * \since This struct is available since SDL 3.2.0.
 *
 * \sa SDL_CreateSurface
@@ -12875,6 +12890,10 @@ SDL_DestroySurface :: (surface: *SDL_Surface) -> void #foreign sdl3;
 *   the same tone mapping that Chrome uses for HDR content, the form "*=N",
 *   where N is a floating point scale factor applied in linear space, and
 *   "none", which disables tone mapping. This defaults to "chrome".
+* - `SDL_PROP_SURFACE_HOTSPOT_X_NUMBER`: the hotspot pixel offset from the
+*   left edge of the image, if this surface is being used as a cursor.
+* - `SDL_PROP_SURFACE_HOTSPOT_Y_NUMBER`: the hotspot pixel offset from the
+*   top edge of the image, if this surface is being used as a cursor.
 *
 * \param surface the SDL_Surface structure to query.
 * \returns a valid property ID on success or 0 on failure; call
@@ -18082,8 +18101,8 @@ SDL_DialogFileFilter :: struct {
 * - A pointer to NULL, the user either didn't choose any file or canceled the
 *   dialog.
 * - A pointer to non-`NULL`, the user chose one or more files. The argument
-*   is a null-terminated list of pointers to C strings, each containing a
-*   path.
+*   is a null-terminated array of pointers to UTF-8 encoded strings, each
+*   containing a path.
 *
 * The filelist argument should not be freed; it will automatically be freed
 * when the callback returns.
@@ -24237,7 +24256,7 @@ SDL_EventAction :: enum s32 {
 * \param numevents if action is SDL_ADDEVENT, the number of events to add
 *                  back to the event queue; if action is SDL_PEEKEVENT or
 *                  SDL_GETEVENT, the maximum number of events to retrieve.
-* \param action action to take; see [[#action|Remarks]] for details.
+* \param action action to take; see [Remarks](#remarks) for details.
 * \param minType minimum value of the event type to be considered;
 *                SDL_EVENT_FIRST is a safe choice.
 * \param maxType maximum value of the event type to be considered;
@@ -26353,9 +26372,16 @@ SDL_GPUIndirectDispatchCommand :: struct {
 /**
 * A structure specifying the parameters of a sampler.
 *
+* Note that mip_lod_bias is a no-op for the Metal driver. For Metal, LOD bias
+* must be applied via shader instead.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_CreateGPUSampler
+* \sa SDL_GPUFilter
+* \sa SDL_GPUSamplerMipmapMode
+* \sa SDL_GPUSamplerAddressMode
+* \sa SDL_GPUCompareOp
 */
 SDL_GPUSamplerCreateInfo :: struct {
     min_filter:        SDL_GPUFilter; /**< The minification filter to apply to lookups. */
@@ -26393,13 +26419,13 @@ SDL_GPUSamplerCreateInfo :: struct {
 * \since This struct is available since SDL 3.2.0.
 *
 * \sa SDL_GPUVertexAttribute
-* \sa SDL_GPUVertexInputState
+* \sa SDL_GPUVertexInputRate
 */
 SDL_GPUVertexBufferDescription :: struct {
     slot:               Uint32; /**< The binding slot of the vertex buffer. */
     pitch:              Uint32; /**< The byte pitch between consecutive elements of the vertex buffer. */
     input_rate:         SDL_GPUVertexInputRate; /**< Whether attribute addressing is a function of the vertex index or instance index. */
-    instance_step_rate: Uint32; /**< The number of instances to draw using the same per-instance data before advancing in the instance buffer by one element. Ignored unless input_rate is SDL_GPU_VERTEXINPUTRATE_INSTANCE */
+    instance_step_rate: Uint32; /**< Reserved for future use. Must be set to 0. */
 }
 
 /**
@@ -26558,10 +26584,13 @@ SDL_GPUTransferBufferCreateInfo :: struct {
 * A structure specifying the parameters of the graphics pipeline rasterizer
 * state.
 *
-* NOTE: Some backend APIs (D3D11/12) will enable depth clamping even if
-* enable_depth_clip is true. If you rely on this clamp+clip behavior,
-* consider enabling depth clip and then manually clamping depth in your
-* fragment shaders on Metal and Vulkan.
+* Note that SDL_GPU_FILLMODE_LINE is not supported on many Android devices.
+* For those devices, the fill mode will automatically fall back to FILL.
+*
+* Also note that the D3D12 driver will enable depth clamping even if
+* enable_depth_clip is true. If you need this clamp+clip behavior, consider
+* enabling depth clip and then manually clamping depth in your fragment
+* shaders on Metal and Vulkan.
 *
 * \since This struct is available since SDL 3.2.0.
 *
@@ -26590,8 +26619,8 @@ SDL_GPURasterizerState :: struct {
 */
 SDL_GPUMultisampleState :: struct {
     sample_count: SDL_GPUSampleCount; /**< The number of samples to be used in rasterization. */
-    sample_mask:  Uint32; /**< Determines which samples get updated in the render targets. Treated as 0xFFFFFFFF if enable_mask is false. */
-    enable_mask:  bool; /**< Enables sample masking. */
+    sample_mask:  Uint32; /**< Reserved for future use. Must be set to 0. */
+    enable_mask:  bool; /**< Reserved for future use. Must be set to false. */
     padding1:     Uint8;
     padding2:     Uint8;
     padding3:     Uint8;
@@ -26639,6 +26668,8 @@ SDL_GPUColorTargetDescription :: struct {
 * \since This struct is available since SDL 3.2.0.
 *
 * \sa SDL_GPUGraphicsPipelineCreateInfo
+* \sa SDL_GPUColorTargetDescription
+* \sa SDL_GPUTextureFormat
 */
 SDL_GPUGraphicsPipelineTargetInfo :: struct {
     color_target_descriptions: *SDL_GPUColorTargetDescription; /**< A pointer to an array of color target descriptions. */
@@ -28482,6 +28513,9 @@ SDL_WaitForGPUSwapchain :: (device: *SDL_GPUDevice, window: *SDL_Window) -> bool
 * freed by the user. You MUST NOT call this function from any thread other
 * than the one that created the window.
 *
+* The swapchain texture is write-only and cannot be used as a sampler or for
+* another reading operation.
+*
 * \param command_buffer a command buffer.
 * \param window a window that has been claimed.
 * \param swapchain_texture a pointer filled in with a swapchain texture
@@ -28500,6 +28534,7 @@ SDL_WaitForGPUSwapchain :: (device: *SDL_GPUDevice, window: *SDL_Window) -> bool
 *
 * \sa SDL_SubmitGPUCommandBuffer
 * \sa SDL_SubmitGPUCommandBufferAndAcquireFence
+* \sa SDL_AcquireGPUSwapchainTexture
 */
 SDL_WaitAndAcquireGPUSwapchainTexture :: (command_buffer: *SDL_GPUCommandBuffer, window: *SDL_Window, swapchain_texture: **SDL_GPUTexture, swapchain_texture_width: *Uint32, swapchain_texture_height: *Uint32) -> bool #foreign sdl3;
 
@@ -32338,6 +32373,9 @@ SDL_GetRendererProperties :: (renderer: *SDL_Renderer) -> SDL_PropertiesID #fore
 * This returns the true output size in pixels, ignoring any render targets or
 * logical size and presentation.
 *
+* For the output size of the current rendering target, with logical size
+* adjustments, use SDL_GetCurrentRenderOutputSize() instead.
+*
 * \param renderer the rendering context.
 * \param w a pointer filled in with the width in pixels.
 * \param h a pointer filled in with the height in pixels.
@@ -32356,9 +32394,10 @@ SDL_GetRenderOutputSize :: (renderer: *SDL_Renderer, w: *s32, h: *s32) -> bool #
 * Get the current output size in pixels of a rendering context.
 *
 * If a rendering target is active, this will return the size of the rendering
-* target in pixels, otherwise if a logical size is set, it will return the
-* logical size, otherwise it will return the value of
-* SDL_GetRenderOutputSize().
+* target in pixels, otherwise return the value of SDL_GetRenderOutputSize().
+*
+* Rendering target or not, the output will be adjusted by the current logical
+* presentation state, dictated by SDL_SetRenderLogicalPresentation().
 *
 * \param renderer the rendering context.
 * \param w a pointer filled in with the current width.
@@ -33104,6 +33143,11 @@ SDL_UnlockTexture :: (texture: *SDL_Texture) -> void #foreign sdl3;
 * To stop rendering to a texture and render to the window again, call this
 * function with a NULL `texture`.
 *
+* Viewport, cliprect, scale, and logical presentation are unique to each
+* render target. Get and set functions for these states apply to the current
+* render target set by this function, and those states persist on each target
+* when the current render target changes.
+*
 * \param renderer the rendering context.
 * \param texture the targeted texture, which must be created with the
 *                `SDL_TEXTUREACCESS_TARGET` flag, or NULL to render to the
@@ -33137,25 +33181,39 @@ SDL_SetRenderTarget :: (renderer: *SDL_Renderer, texture: *SDL_Texture) -> bool 
 SDL_GetRenderTarget :: (renderer: *SDL_Renderer) -> *SDL_Texture #foreign sdl3;
 
 /**
-* Set a device independent resolution and presentation mode for rendering.
+* Set a device-independent resolution and presentation mode for rendering.
 *
 * This function sets the width and height of the logical rendering output.
-* The renderer will act as if the window is always the requested dimensions,
-* scaling to the actual window resolution as necessary.
+* The renderer will act as if the current render target is always the
+* requested dimensions, scaling to the actual resolution as necessary.
 *
 * This can be useful for games that expect a fixed size, but would like to
 * scale the output to whatever is available, regardless of how a user resizes
 * a window, or if the display is high DPI.
 *
+* Logical presentation can be used with both render target textures and the
+* renderer's window; the state is unique to each render target, and this
+* function sets the state for the current render target. It might be useful
+* to draw to a texture that matches the window dimensions with logical
+* presentation enabled, and then draw that texture across the entire window
+* with logical presentation disabled. Be careful not to render both with
+* logical presentation enabled, however, as this could produce
+* double-letterboxing, etc.
+*
 * You can disable logical coordinates by setting the mode to
 * SDL_LOGICAL_PRESENTATION_DISABLED, and in that case you get the full pixel
-* resolution of the output window; it is safe to toggle logical presentation
+* resolution of the render target; it is safe to toggle logical presentation
 * during the rendering of a frame: perhaps most of the rendering is done to
 * specific dimensions but to make fonts look sharp, the app turns off logical
-* presentation while drawing text.
+* presentation while drawing text, for example.
 *
-* Letterboxing will only happen if logical presentation is enabled during
-* SDL_RenderPresent; be sure to reenable it first if you were using it.
+* For the renderer's window, letterboxing is drawn into the framebuffer if
+* logical presentation is enabled during SDL_RenderPresent; be sure to
+* reenable it before presenting if you were toggling it, otherwise the
+* letterbox areas might have artifacts from previous frames (or artifacts
+* from external overlays, etc). Letterboxing is never drawn into texture
+* render targets; be sure to call SDL_RenderClear() before drawing into the
+* texture so the letterboxing areas are cleared, if appropriate.
 *
 * You can convert coordinates in an event into rendering coordinates using
 * SDL_ConvertEventToRenderCoordinates().
@@ -33183,6 +33241,9 @@ SDL_SetRenderLogicalPresentation :: (renderer: *SDL_Renderer, w: s32, h: s32, mo
 * This function gets the width and height of the logical rendering output, or
 * the output size in pixels if a logical resolution is not enabled.
 *
+* Each render target has its own logical presentation state. This function
+* gets the state for the current render target.
+*
 * \param renderer the rendering context.
 * \param w an int to be filled with the width.
 * \param h an int to be filled with the height.
@@ -33205,6 +33266,9 @@ SDL_GetRenderLogicalPresentation :: (renderer: *SDL_Renderer, w: *s32, h: *s32, 
 * presentation, based on the presentation mode and output size. If logical
 * presentation is disabled, it will fill the rectangle with the output size,
 * in pixels.
+*
+* Each render target has its own logical presentation state. This function
+* gets the rectangle for the current render target.
 *
 * \param renderer the rendering context.
 * \param rect a pointer filled in with the final presentation rectangle, may
@@ -33322,6 +33386,9 @@ SDL_ConvertEventToRenderCoordinates :: (renderer: *SDL_Renderer, event: *SDL_Eve
 *
 * The area's width and height must be >= 0.
 *
+* Each render target has its own viewport. This function sets the viewport
+* for the current render target.
+*
 * \param renderer the rendering context.
 * \param rect the SDL_Rect structure representing the drawing area, or NULL
 *             to set the viewport to the entire target.
@@ -33339,6 +33406,9 @@ SDL_SetRenderViewport :: (renderer: *SDL_Renderer, rect: *SDL_Rect) -> bool #for
 
 /**
 * Get the drawing area for the current target.
+*
+* Each render target has its own viewport. This function gets the viewport
+* for the current render target.
 *
 * \param renderer the rendering context.
 * \param rect an SDL_Rect structure filled in with the current drawing area.
@@ -33360,6 +33430,9 @@ SDL_GetRenderViewport :: (renderer: *SDL_Renderer, rect: *SDL_Rect) -> bool #for
 * This is useful if you're saving and restoring the viewport and want to know
 * whether you should restore a specific rectangle or NULL. Note that the
 * viewport is always reset when changing rendering targets.
+*
+* Each render target has its own viewport. This function checks the viewport
+* for the current render target.
 *
 * \param renderer the rendering context.
 * \returns true if the viewport was set to a specific rectangle, or false if
@@ -33399,6 +33472,9 @@ SDL_GetRenderSafeArea :: (renderer: *SDL_Renderer, rect: *SDL_Rect) -> bool #for
 /**
 * Set the clip rectangle for rendering on the specified target.
 *
+* Each render target has its own clip rectangle. This function sets the
+* cliprect for the current render target.
+*
 * \param renderer the rendering context.
 * \param rect an SDL_Rect structure representing the clip area, relative to
 *             the viewport, or NULL to disable clipping.
@@ -33417,6 +33493,9 @@ SDL_SetRenderClipRect :: (renderer: *SDL_Renderer, rect: *SDL_Rect) -> bool #for
 /**
 * Get the clip rectangle for the current target.
 *
+* Each render target has its own clip rectangle. This function gets the
+* cliprect for the current render target.
+*
 * \param renderer the rendering context.
 * \param rect an SDL_Rect structure filled in with the current clipping area
 *             or an empty rectangle if clipping is disabled.
@@ -33433,7 +33512,10 @@ SDL_SetRenderClipRect :: (renderer: *SDL_Renderer, rect: *SDL_Rect) -> bool #for
 SDL_GetRenderClipRect :: (renderer: *SDL_Renderer, rect: *SDL_Rect) -> bool #foreign sdl3;
 
 /**
-* Get whether clipping is enabled on the given renderer.
+* Get whether clipping is enabled on the given render target.
+*
+* Each render target has its own clip rectangle. This function checks the
+* cliprect for the current render target.
 *
 * \param renderer the rendering context.
 * \returns true if clipping is enabled or false if not; call SDL_GetError()
@@ -33459,6 +33541,9 @@ SDL_RenderClipEnabled :: (renderer: *SDL_Renderer) -> bool #foreign sdl3;
 * will be handled using the appropriate quality hints. For best results use
 * integer scaling factors.
 *
+* Each render target has its own scale. This function sets the scale for the
+* current render target.
+*
 * \param renderer the rendering context.
 * \param scaleX the horizontal scaling factor.
 * \param scaleY the vertical scaling factor.
@@ -33475,6 +33560,9 @@ SDL_SetRenderScale :: (renderer: *SDL_Renderer, scaleX: float, scaleY: float) ->
 
 /**
 * Get the drawing scale for the current target.
+*
+* Each render target has its own scale. This function gets the scale for the
+* current render target.
 *
 * \param renderer the rendering context.
 * \param scaleX a pointer filled in with the horizontal scaling factor.
@@ -34019,15 +34107,21 @@ SDL_RenderGeometryRaw :: (renderer: *SDL_Renderer, texture: *SDL_Texture, xy: *f
 /**
 * Read pixels from the current rendering target.
 *
-* The returned surface should be freed with SDL_DestroySurface()
+* The returned surface contains pixels inside the desired area clipped to the
+* current viewport, and should be freed with SDL_DestroySurface().
+*
+* Note that this returns the actual pixels on the screen, so if you are using
+* logical presentation you should use SDL_GetRenderLogicalPresentationRect()
+* to get the area containing your content.
 *
 * **WARNING**: This is a very slow operation, and should not be used
 * frequently. If you're using this on the main rendering target, it should be
 * called after rendering and before SDL_RenderPresent().
 *
 * \param renderer the rendering context.
-* \param rect an SDL_Rect structure representing the area in pixels relative
-*             to the to current viewport, or NULL for the entire viewport.
+* \param rect an SDL_Rect structure representing the area to read, which will
+*             be clipped to the current viewport, or NULL for the entire
+*             viewport.
 * \returns a new SDL_Surface on success or NULL on failure; call
 *          SDL_GetError() for more information.
 *
@@ -34518,7 +34612,8 @@ SDL_CloseStorage :: (storage: *SDL_Storage) -> bool #foreign sdl3;
 *
 * This function should be called in regular intervals until it returns true -
 * however, it is not recommended to spinwait on this call, as the backend may
-* depend on a synchronous message loop.
+* depend on a synchronous message loop. You might instead poll this in your
+* game's main loop while processing events and drawing a loading screen.
 *
 * \param storage a storage container to query.
 * \returns true if the container is ready, false otherwise.
@@ -36199,7 +36294,7 @@ SDL_ShaderCross_CompileComputePipelineFromHLSL :: (device: *SDL_GPUDevice, info:
 
 #import "Basic"; // For assert, push_context
 
-sdl3 :: #library "windows/SDL3-3.2.4/lib/x64/SDL3";
+sdl3 :: #library "windows/SDL3-3.2.8/lib/x64/SDL3";
 sdl3_shadercross :: #library "windows/SDL3_shadercross-3.0.0-windows-VC-x64/lib/SDL3_shadercross";
 
 #run {

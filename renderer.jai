@@ -1,77 +1,52 @@
 
+debug_draw_bounds :: (box: Bounding_Box, colour := colour_white) {
+    command: Mesh_Render_Command;
+    command.shader = .DEBUG;
+    command.flags = .NO_CAST_SHADOW;
+    command.mesh = cube_mesh;
+    command.instance.colour = colour;
+
+    mid := (box.min + box.max) * .5;
+    span := (box.max - box.min);
+    command.instance.transform = mat4_translation(mid) * mat4_scale(span);
+
+    add_mesh_render_command(command);
+}
+
 Instance_Data :: struct {
     transform := mat4_identity;
     colour := #run rgba(1.0);
     material_params := Vec4.{1, 1, 0, 0};
 }
 
-Render_Batch :: struct {
-    next, prev: *Render_Batch;
-
-    instances: [..] Instance_Data;
-
-    vertex_buffers: [] SDL_GPUBufferBinding;
-    index_buffer: SDL_GPUBufferBinding;
-
-    textures: [] SDL_GPUTextureSamplerBinding;
-
-    pipeline: *Pipeline;
-
-    flags: Command_Flags;
-
-    num_indices: int;
-    num_instances: int;
-}
-
-Render_Batcher :: struct {
-    hash_map: [] *Render_Batch;
-    batch_arena: *Arena;
-    data_arena: *Arena;
-    instance_count: int;
-}
-
-MAX_BATCHES :: 1024;
-
-init_render_batcher :: (batcher: *Render_Batcher) {
-    batcher.batch_arena = make_arena();
-    batcher.data_arena = make_arena();
-    batcher.hash_map = push_view(batcher.data_arena, *Render_Batch, MAX_BATCHES);
-}
-
-free_render_batcher :: (batcher: *Render_Batcher) {
-    free_arena(batcher.batch_arena);
-    free_arena(batcher.data_arena);
-}
-
-make_batches :: (batcher: Render_Batcher) -> [] Render_Batch {
-    batches := arena_to_view(batcher.batch_arena, Render_Batch);
-    return batches;
-}
-
 Mesh_Shader :: enum {
+    DEBUG;
     STATIC_MESH;
     TERRAIN;
     SKY;
 }
 
 Command_Flags :: enum_flags {
-    WIREFRAME;
     NO_CAST_SHADOW;
 }
 
-Render_Command :: struct {
+Mesh_Render_Command :: struct {
     shader: Mesh_Shader;
+    flags: Command_Flags;
     mesh: *Mesh;
     textures: [] *Texture;
-    flags: Command_Flags;
     using instance: Instance_Data;
 }
 
-add_render_command :: (batcher: *Render_Batcher, command: Render_Command) {
-    if batcher.instance_count >= MAX_INSTANCES return;
+add_mesh_render_command :: (command: Mesh_Render_Command) {
+    if mesh_batcher.total_instance_count >= MAX_INSTANCES {
+        return;
+    }
 
     pipeline: *Pipeline;
-    if command.shader == {
+    if #complete command.shader == {
+        case .DEBUG;
+        pipeline = debug_pipeline;
         case .STATIC_MESH;
         pipeline = mesh_pipeline;
         case .TERRAIN;
@@ -81,35 +56,40 @@ add_render_command :: (batcher: *Render_Batcher, command: Render_Command) {
     }
 
     hash := get_hash(pipeline.name);
+    hash = get_hash(command.shader, hash);
     hash = get_hash(command.flags, hash);
     hash = get_hash(command.mesh.name, hash);
     for command.textures {
         hash = get_hash(it.name, hash);
     }
 
-    batch := batcher.hash_map[hash % MAX_BATCHES];
-    if !batch {
-        stub_batch :: Render_Batch.{};
-        batch = push_struct(batcher.batch_arena, Render_Batch, *stub_batch);
-        if batch == *stub_batch {
+    index := mesh_batcher.hash_map[hash % MAX_BATCHES];
+    if index == -1 {
+        if mesh_batcher.batches.count + 1 >= MAX_BATCHES {
             return;
         }
+
+        batch: Mesh_Batch;
+        batch.instances = make_arena_array(context.temp_arena, Instance_Data);
 
         batch.pipeline = pipeline;
         batch.flags = command.flags;
 
-        batch.instances = push_array(batcher.data_arena, Instance_Data, 32);
-
-        batch.vertex_buffers = push_view(batcher.data_arena, SDL_GPUBufferBinding, 5);
-        batch.vertex_buffers[0] = .{command.mesh.position_buffer, 0};
-        batch.vertex_buffers[1] = .{command.mesh.colour_buffer, 0};
-        batch.vertex_buffers[2] = .{command.mesh.tex_coord_buffer, 0};
-        batch.vertex_buffers[3] = .{command.mesh.normal_buffer, 0};
-        batch.vertex_buffers[4] = .{command.mesh.tangent_buffer, 0};
+        if pipeline == debug_pipeline {
+            batch.vertex_buffers = push_view(context.temp_arena, SDL_GPUBufferBinding, 1);
+            batch.vertex_buffers[0] = .{command.mesh.position_buffer, 0};
+        } else {
+            batch.vertex_buffers = push_view(context.temp_arena, SDL_GPUBufferBinding, 5);
+            batch.vertex_buffers[0] = .{command.mesh.position_buffer, 0};
+            batch.vertex_buffers[1] = .{command.mesh.colour_buffer, 0};
+            batch.vertex_buffers[2] = .{command.mesh.tex_coord_buffer, 0};
+            batch.vertex_buffers[3] = .{command.mesh.normal_buffer, 0};
+            batch.vertex_buffers[4] = .{command.mesh.tangent_buffer, 0};
+        }
 
         batch.index_buffer = .{command.mesh.index_buffer, 0};
 
-        batch.textures = push_view(batcher.data_arena, SDL_GPUTextureSamplerBinding, mesh_pipeline.needed_textures);
+        batch.textures = push_view(context.temp_arena, SDL_GPUTextureSamplerBinding, mesh_pipeline.needed_textures);
         fallback_texture := load_texture("missing");
         for * batch.textures {
             it.* = .{fallback_texture.texture_object, default_sampler};
@@ -120,10 +100,19 @@ add_render_command :: (batcher: *Render_Batcher, command: Render_Command) {
 
         batch.num_indices = command.mesh.num_indices;
 
-        batcher.hash_map[hash % MAX_BATCHES] = batch;
+        index = mesh_batcher.batches.count;
+        array_add(*mesh_batcher.batches, batch);
+        mesh_batcher.hash_map[hash % MAX_BATCHES] = index;
     }
 
-    batch.num_instances += 1;
+    batch := *mesh_batcher.batches[index];
+
+    if batch.instances.count + 1 >= MAX_INSTANCES {
+        return;
+    }
+
+    mesh_batcher.total_instance_count += 1;
+
     array_add(*batch.instances, command.instance);
 }
 
@@ -165,44 +154,72 @@ Render_Scene :: struct {
     sun: Directional_Light;
     camera: Camera_Base;
 
-    mesh_batcher: Render_Batcher;
+    mesh_batcher: Mesh_Batcher;
 
     cascades: [shadow_cascade_count] float;
     light_matrices: [shadow_cascade_count] Mat4;
 }
 
-render_shadow_pass :: (scene: *Render_Scene, batches: [] Render_Batch, command_buffer: *SDL_GPUCommandBuffer) {
-    near_planes: [shadow_cascade_count] float;
+render_debug_pass :: (scene: Render_Scene, batches: [] Mesh_Batch, swap_texture: *SDL_GPUTexture, command_buffer: *SDL_GPUCommandBuffer, opts := Opaque_Render_Target_Options.{}) {
+    colour_target := SDL_GPUColorTargetInfo.{
+        texture = swap_texture,
+        clear_color = .{0.2, 0.5, 0.8, 1},
+        load_op = .SDL_GPU_LOADOP_LOAD,
+        store_op = .SDL_GPU_STOREOP_STORE,
+    };
+
+    render_pass := SDL_BeginGPURenderPass(command_buffer, *colour_target, 1, null);
+    if !render_pass {
+        report_sdl_error("SDL_BeginGPURenderPass", "render_debug_pass");
+    }
+
+    vert_constants: Mesh_Vertex_Constants;
+    vert_constants.view = scene.camera.view;
+    vert_constants.projection = scene.camera.projection;
+
+    SDL_PushGPUVertexUniformData(command_buffer, 0, *vert_constants, size_of(Mesh_Vertex_Constants));
+
+    base_instance := 0;
+    for batch: batches {
+        defer base_instance += batch.instances.count;
+        if batch.pipeline != debug_pipeline continue;
+
+        SDL_BindGPUGraphicsPipeline(render_pass, batch.pipeline.pipeline_object);
+
+        SDL_BindGPUVertexStorageBuffers(render_pass, 0, *instance_buffer, 1);
+        SDL_BindGPUVertexBuffers(render_pass, 0, batch.vertex_buffers.data, xx batch.vertex_buffers.count);
+        SDL_BindGPUIndexBuffer(render_pass, *batch.index_buffer, .SDL_GPU_INDEXELEMENTSIZE_32BIT);
+
+        SDL_DrawGPUIndexedPrimitives(render_pass, xx batch.num_indices, xx batch.instances.count, 0, 0, xx base_instance);
+    }
+
+    SDL_EndGPURenderPass(render_pass);
+}
+
+render_shadow_pass :: (scene: *Render_Scene, batches: [] Mesh_Batch, command_buffer: *SDL_GPUCommandBuffer) {
     far_planes: [shadow_cascade_count] float;
 
-    n := scene.camera.near_plane;
-    f := scene.camera.far_plane;
+    near_plane := scene.camera.near_plane;
+    far_plane := scene.camera.far_plane;
     range := scene.camera.far_plane - scene.camera.near_plane;
 
-    near_planes[0] = n;
-    far_planes[0] = n + range * .125;
-
-    near_planes[1] = far_planes[0];
-    far_planes[1] = n + range * .4;
-
-    near_planes[2] = far_planes[1];
-    far_planes[2] = n + range * .75;
-
-    near_planes[3] = far_planes[2];
-    far_planes[3] = f;
-
-    /*depth_increment := (scene.camera.far_plane - scene.camera.near_plane) / shadow_cascade_count;
     for 0..shadow_cascade_count-1 {
-        near_planes[it] = scene.camera.near_plane + (it * depth_increment);
-        far_planes[it] = scene.camera.near_plane + ((it+1) * depth_increment);
-    }*/
-
-    for 0..shadow_cascade_count-1 {
-        scene.light_matrices[it] = calculate_light_space_matrix(scene.sun, *scene.camera,
-            near_planes[it], far_planes[it]);
+        far := (it + 1.0) / shadow_cascade_count;
+        log_distance := near_plane * pow(far_plane / near_plane, far);
+        uniform_distance := near_plane + (far_plane - near_plane) * far;
+        far_planes[it] = lerp(uniform_distance, log_distance, 0.5);
     }
 
     scene.cascades = far_planes;
+
+    for 0..shadow_cascade_count-1 {
+        n := near_plane;
+        if it > 0 n = far_planes[it - 1];
+
+        f := far_planes[it];
+
+        scene.light_matrices[it] = calculate_light_space_matrix(scene.sun, *scene.camera, n, f);
+    }
 
     for 0..shadow_cascade_count-1 {
         colour_target := SDL_GPUColorTargetInfo.{
@@ -214,6 +231,9 @@ render_shadow_pass :: (scene: *Render_Scene, batches: [] Render_Batch, command_b
         };
 
         render_pass := SDL_BeginGPURenderPass(command_buffer, *colour_target, 1, null);
+        if !render_pass {
+            report_sdl_error("SDL_BeginGPURenderPass", "render_shadow_pass");
+        }
 
         base_instance := 0;
         for batch: batches {
@@ -221,7 +241,7 @@ render_shadow_pass :: (scene: *Render_Scene, batches: [] Render_Batch, command_b
 
             SDL_PushGPUVertexUniformData(command_buffer, 0, *scene.light_matrices[it], size_of(Mat4));
 
-            SDL_BindGPUGraphicsPipeline(render_pass, shadow_pipeline.filled);
+            SDL_BindGPUGraphicsPipeline(render_pass, shadow_pipeline.pipeline_object);
 
             viewport := SDL_GPUViewport.{0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0, 1};
             SDL_SetGPUViewport(render_pass, *viewport);
@@ -230,30 +250,38 @@ render_shadow_pass :: (scene: *Render_Scene, batches: [] Render_Batch, command_b
 
             SDL_BindGPUVertexBuffers(render_pass, 0, batch.vertex_buffers.data, xx batch.vertex_buffers.count);
             SDL_BindGPUIndexBuffer(render_pass, *batch.index_buffer, .SDL_GPU_INDEXELEMENTSIZE_32BIT);
-            SDL_DrawGPUIndexedPrimitives(render_pass, xx batch.num_indices, xx batch.num_instances, 0, 0, xx base_instance);
-            base_instance += batch.num_instances;
+            SDL_DrawGPUIndexedPrimitives(render_pass, xx batch.num_indices, xx batch.instances.count, 0, 0, xx base_instance);
+            base_instance += batch.instances.count;
         }
 
         SDL_EndGPURenderPass(render_pass);
     }
 }
 
-render_opaque_pass :: (scene: Render_Scene, batches: [] Render_Batch, swap_texture: *SDL_GPUTexture, command_buffer: *SDL_GPUCommandBuffer) {
+Opaque_Render_Target_Options :: struct {
+    clear_colour := true;
+    clear_depth := true;
+}
+
+render_opaque_pass :: (scene: Render_Scene, batches: [] Mesh_Batch, swap_texture: *SDL_GPUTexture, command_buffer: *SDL_GPUCommandBuffer, opts := Opaque_Render_Target_Options.{}) {
     colour_target := SDL_GPUColorTargetInfo.{
         texture = swap_texture,
         clear_color = .{0.2, 0.5, 0.8, 1},
-        load_op = .SDL_GPU_LOADOP_CLEAR,
+        load_op = ifx opts.clear_colour then .SDL_GPU_LOADOP_CLEAR else .SDL_GPU_LOADOP_LOAD,
         store_op = .SDL_GPU_STOREOP_STORE,
     };
 
     depth_target := SDL_GPUDepthStencilTargetInfo.{
         texture = mesh_depth_texture,
         clear_depth = 1,
-        load_op = .SDL_GPU_LOADOP_CLEAR,
+        load_op = ifx opts.clear_depth then .SDL_GPU_LOADOP_CLEAR else .SDL_GPU_LOADOP_LOAD,
         store_op = .SDL_GPU_STOREOP_STORE,
     };
 
     render_pass := SDL_BeginGPURenderPass(command_buffer, *colour_target, 1, *depth_target);
+    if !render_pass {
+        report_sdl_error("SDL_BeginGPURenderPass", "render_opaque_pass");
+    }
 
     shadow_binding := SDL_GPUTextureSamplerBinding.{shadow_texture_array, shadow_sampler};
 
@@ -276,11 +304,10 @@ render_opaque_pass :: (scene: Render_Scene, batches: [] Render_Batch, swap_textu
 
     base_instance := 0;
     for batch: batches {
-        if batch.flags & .WIREFRAME {
-            SDL_BindGPUGraphicsPipeline(render_pass, batch.pipeline.wireframe);
-        } else {
-            SDL_BindGPUGraphicsPipeline(render_pass, batch.pipeline.filled);
-        }
+        defer base_instance += batch.instances.count;
+        if batch.pipeline == debug_pipeline continue;
+
+        SDL_BindGPUGraphicsPipeline(render_pass, batch.pipeline.pipeline_object);
 
         SDL_BindGPUVertexStorageBuffers(render_pass, 0, *instance_buffer, 1);
         SDL_BindGPUVertexBuffers(render_pass, 0, batch.vertex_buffers.data, xx batch.vertex_buffers.count);
@@ -293,54 +320,80 @@ render_opaque_pass :: (scene: Render_Scene, batches: [] Render_Batch, swap_textu
         }
 
         SDL_BindGPUFragmentSamplers(render_pass, 0, textures.data, xx textures.count);
-        SDL_DrawGPUIndexedPrimitives(render_pass, xx batch.num_indices, xx batch.num_instances, 0, 0, xx base_instance);
-        base_instance += batch.num_instances;
+        SDL_DrawGPUIndexedPrimitives(render_pass, xx batch.num_indices, xx batch.instances.count, 0, 0, xx base_instance);
     }
 
     SDL_EndGPURenderPass(render_pass);
 }
 
-render_scene :: (scene: Render_Scene) {
-    batches := make_batches(scene.mesh_batcher);
-    defer free_render_batcher(*scene.mesh_batcher);
+renderer_begin_frame :: () {
+    init_mesh_batcher(*mesh_batcher);
+}
 
+report_sdl_error :: (function: string, tag := "") {
+    err := SDL_GetError();
+    if err[0] {
+        print("sdl error in function %() tag [%]: %\n", function, tag, to_string(err));
+        SDL_ClearError();
+    }
+}
+
+render_scene :: (scene: Render_Scene) {
     command_buffer := SDL_AcquireGPUCommandBuffer(context.device);
+    if !command_buffer {
+        report_sdl_error("SDL_AcquireGPUCommandBuffer");
+    }
 
     swap_texture: *SDL_GPUTexture;
-    SDL_AcquireGPUSwapchainTexture(command_buffer, context.window, *swap_texture, null, null);
-    if !swap_texture {
-        SDL_CancelGPUCommandBuffer(command_buffer);
-        return;
+    if !SDL_AcquireGPUSwapchainTexture(command_buffer, context.window, *swap_texture, null, null) {
+        report_sdl_error("SDL_AcquireGPUSwapchainTexture");
     }
 
-    if batches.count > 0 {
-        mapping := cast(*Instance_Data) SDL_MapGPUTransferBuffer(context.device, instance_transfer_buffer, false);
+    if swap_texture {
+        if mesh_batcher.batches.count > 0 {
+            mapping := cast(*Instance_Data) SDL_MapGPUTransferBuffer(context.device, instance_transfer_buffer, false);
+            if !mapping {
+                report_sdl_error("SDL_MapGPUTransferBuffer", "instance_transfer_buffer");
+            }
 
-        cursor := 0;
-        for batch: batches {
-            memcpy(mapping + cursor, batch.instances.data, size_of(Instance_Data) * batch.instances.count);
-            cursor += batch.instances.count;
+            cursor := 0;
+            for batch: mesh_batcher.batches {
+                memcpy(mapping + cursor, batch.instances.data, size_of(Instance_Data) * batch.instances.count);
+                cursor += batch.instances.count;
+            }
+
+            SDL_UnmapGPUTransferBuffer(context.device, instance_transfer_buffer);
+
+            location: SDL_GPUTransferBufferLocation;
+            location.transfer_buffer = instance_transfer_buffer;
+            location.offset = 0;
+
+            region: SDL_GPUBufferRegion;
+            region.buffer = instance_buffer;
+            region.size = xx (cursor * size_of(Instance_Data));
+            region.offset = 0;
+            copy_pass := SDL_BeginGPUCopyPass(command_buffer);
+            if !copy_pass {
+                report_sdl_error("SDL_BeginGPUCopyPass", "instance_transfer_buffer");
+            }
+
+            SDL_UploadToGPUBuffer(copy_pass, *location, *region, false);
+
+            SDL_EndGPUCopyPass(copy_pass);
+
+            render_shadow_pass(*scene, mesh_batcher.batches, command_buffer);
+            render_opaque_pass(scene, mesh_batcher.batches, swap_texture, command_buffer);
+            render_debug_pass(scene, mesh_batcher.batches, swap_texture, command_buffer);
         }
 
-        SDL_UnmapGPUTransferBuffer(context.device, instance_transfer_buffer);
-
-        location: SDL_GPUTransferBufferLocation;
-        location.transfer_buffer = instance_transfer_buffer;
-        location.offset = 0;
-
-        region: SDL_GPUBufferRegion;
-        region.buffer = instance_buffer;
-        region.size = xx (cursor * size_of(Instance_Data));
-        region.offset = 0;
-        copy_pass := SDL_BeginGPUCopyPass(command_buffer);
-        SDL_UploadToGPUBuffer(copy_pass, *location, *region, false);
-        SDL_EndGPUCopyPass(copy_pass);
+        if !SDL_SubmitGPUCommandBuffer(command_buffer) {
+            report_sdl_error("SDL_SubmitGPUCommandBuffer", "render_frame");
+        }
+    } else {
+        if !SDL_CancelGPUCommandBuffer(command_buffer) {
+            report_sdl_error("SDL_CancelGPUCommandBuffer", "render_frame");
+        }
     }
-
-    render_shadow_pass(*scene, batches, command_buffer);
-    render_opaque_pass(scene, batches, swap_texture, command_buffer);
-
-    SDL_SubmitGPUCommandBuffer(command_buffer);
 }
 
 init_renderer :: () {
@@ -353,31 +406,39 @@ init_renderer :: () {
         enable_depth_write = true,
         enable_alpha_blending = true,
         cull_mode = .SDL_GPU_CULLMODE_BACK,
-        shader_name = "static_mesh",
+        shader_options = .{"static_mesh", "static_mesh", shader_feature_flags_static_mesh},
         needed_textures = 2
     };
 
     mesh_pipeline = create_pipeline("mesh_render_pipeline", mesh_pipeline_options, .MESH);
 
     terrain_pipeline_options := mesh_pipeline_options;
-    terrain_pipeline_options.shader_name = "terrain";
+    terrain_pipeline_options.shader_options = .{"static_mesh", "terrain", shader_feature_flags_static_mesh};
 
     terrain_pipeline = create_pipeline("terrain_render_pipeline", terrain_pipeline_options, .MESH);
 
     sky_pipeline_options := mesh_pipeline_options;
-    sky_pipeline_options.shader_name = "sky";
+    sky_pipeline_options.shader_options = .{"static_mesh", "sky", shader_feature_flags_none};
 
     sky_pipeline = create_pipeline("sky_render_pipeline", sky_pipeline_options, .MESH);
 
     shadow_pipeline_options := Pipeline_Create_Options.{
         has_colour_target = true,
-        colour_target_count = 1,
         uses_swap_texture = false,
         cull_mode = .SDL_GPU_CULLMODE_FRONT,
-        shader_name = "shadow",
+        shader_options = .{"shadow", "", shader_feature_flags_none}
     };
 
     shadow_pipeline = create_pipeline("shadow_render_pipeline", shadow_pipeline_options, .SHADOW);
+
+    debug_pipeline_options := Pipeline_Create_Options.{
+        has_colour_target = true,
+        cull_mode = .SDL_GPU_CULLMODE_NONE,
+        fill_mode = .SDL_GPU_FILLMODE_LINE,
+        shader_options = .{"debug", "", shader_feature_flags_none}
+    };
+
+    debug_pipeline = create_pipeline("debug_render_pipeline", debug_pipeline_options, .DEBUG);
 
     mesh_depth_create_info := SDL_GPUTextureCreateInfo.{
         type = .SDL_GPU_TEXTURETYPE_2D,
@@ -390,6 +451,10 @@ init_renderer :: () {
     };
 
     mesh_depth_texture = SDL_CreateGPUTexture(context.device, *mesh_depth_create_info);
+    if !mesh_depth_texture {
+        report_sdl_error("SDL_CreateGPUTexture", "mesh_depth_texture");
+    }
+
     SDL_SetGPUTextureName(context.device, mesh_depth_texture, "mesh_depth_texture");
 
     shadow_create_info := SDL_GPUTextureCreateInfo.{
@@ -403,6 +468,10 @@ init_renderer :: () {
     };
 
     shadow_texture_array = SDL_CreateGPUTexture(context.device, *shadow_create_info);
+    if !shadow_texture_array {
+        report_sdl_error("SDL_CreateGPUTexture", "shadow_texture_array");
+    }
+
     SDL_SetGPUTextureName(context.device, shadow_texture_array, "shadow_texture_array");
 
     default_sampler_info: SDL_GPUSamplerCreateInfo;
@@ -415,17 +484,22 @@ init_renderer :: () {
     default_sampler_info.address_mode_v = .SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
     default_sampler_info.address_mode_w = .SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
     default_sampler = SDL_CreateGPUSampler(context.device, *default_sampler_info);
+    if !default_sampler {
+        report_sdl_error("SDL_CreateGPUSampler", "default_sampler");
+    }
 
     shadow_sampler_info: SDL_GPUSamplerCreateInfo;
-    default_sampler_info.min_lod = 0;
-    default_sampler_info.max_lod = 0;
-    default_sampler_info.min_filter = .SDL_GPU_FILTER_NEAREST;
-    default_sampler_info.mag_filter = .SDL_GPU_FILTER_NEAREST;
-    default_sampler_info.mipmap_mode = .SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
-    default_sampler_info.address_mode_u = .SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
-    default_sampler_info.address_mode_v = .SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
-    default_sampler_info.address_mode_w = .SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+    shadow_sampler_info.min_lod = 0;
+    shadow_sampler_info.max_lod = 0;
+    shadow_sampler_info.min_filter = .SDL_GPU_FILTER_LINEAR;
+    shadow_sampler_info.mag_filter = .SDL_GPU_FILTER_LINEAR;
+    shadow_sampler_info.address_mode_u = .SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+    shadow_sampler_info.address_mode_v = .SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+    shadow_sampler_info.address_mode_w = .SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
     shadow_sampler = SDL_CreateGPUSampler(context.device, *shadow_sampler_info);
+    if !shadow_sampler {
+        report_sdl_error("SDL_CreateGPUSampler", "shadow_sampler");
+    }
 
     default_texture = create_default_texture();
 
@@ -439,25 +513,16 @@ Pipeline :: struct {
     name: string;
     shader: *Shader;
 
-    filled_info: SDL_GPUGraphicsPipelineCreateInfo;
-    filled: *SDL_GPUGraphicsPipeline;
-
-    wireframe_info: SDL_GPUGraphicsPipelineCreateInfo;
-    wireframe: *SDL_GPUGraphicsPipeline;
+    create_info: SDL_GPUGraphicsPipelineCreateInfo;
+    pipeline_object: *SDL_GPUGraphicsPipeline;
 
     needed_textures: int;
 }
 
 recreate_pipeline :: (pipeline: *Pipeline) {
-    pipeline.filled_info.vertex_shader = pipeline.shader.vertex;
-    pipeline.filled_info.fragment_shader = pipeline.shader.fragment;
-    pipeline.filled = SDL_CreateGPUGraphicsPipeline(context.device, *pipeline.filled_info);
-
-    pipeline.wireframe_info.vertex_shader = pipeline.shader.vertex;
-    pipeline.wireframe_info.fragment_shader = pipeline.shader.fragment;
-    pipeline.wireframe = SDL_CreateGPUGraphicsPipeline(context.device, *pipeline.wireframe_info);
-
-    print("Recreated pipeline %\n", pipeline.name);
+    pipeline.create_info.vertex_shader = pipeline.shader.vertex;
+    pipeline.create_info.fragment_shader = pipeline.shader.fragment;
+    pipeline.pipeline_object = SDL_CreateGPUGraphicsPipeline(context.device, *pipeline.create_info);
 }
 
 #scope_file
@@ -483,7 +548,9 @@ create_default_texture :: () -> *Texture {
     return create_texture("missing", .{pixels, size, size, .RGBA8_UNORM});
 }
 
-SHADOW_MAP_SIZE :: 2048;
+mesh_batcher: Mesh_Batcher;
+
+SHADOW_MAP_SIZE :: 1024;
 
 renderer_arena: *Arena;
 
@@ -492,6 +559,7 @@ mesh_pipeline: *Pipeline;
 terrain_pipeline: *Pipeline;
 shadow_pipeline: *Pipeline;
 sky_pipeline: *Pipeline;
+debug_pipeline: *Pipeline;
 
 default_texture: *Texture;
 
@@ -502,7 +570,8 @@ shadow_sampler: *SDL_GPUSampler;
 mesh_depth_texture: *SDL_GPUTexture;
 default_sampler: *SDL_GPUSampler;
 
-MAX_INSTANCES :: 4096;
+MAX_BATCHES :: 1024;
+MAX_INSTANCES :: 100000;
 instance_buffer: *SDL_GPUBuffer;
 instance_transfer_buffer: *SDL_GPUTransferBuffer;
 
@@ -515,17 +584,19 @@ Pipeline_Create_Options :: struct {
     enable_depth_write: bool;
     enable_alpha_blending: bool;
     cull_mode := SDL_GPUCullMode.SDL_GPU_CULLMODE_BACK;
-    shader_name: string;
+    fill_mode := SDL_GPUFillMode.SDL_GPU_FILLMODE_FILL;
+    shader_options: Shader_Options;
     needed_textures: int;
 }
 
 Pipeline_Type :: enum {
+    DEBUG;
     SHADOW;
     MESH;
 }
 
 create_pipeline :: (name: string, opts: Pipeline_Create_Options, type: Pipeline_Type) -> *Pipeline {
-    filled_info: SDL_GPUGraphicsPipelineCreateInfo;
+    create_info: SDL_GPUGraphicsPipelineCreateInfo;
 
     if opts.has_colour_target {
         colour_desc := push_view(renderer_arena, SDL_GPUColorTargetDescription, opts.colour_target_count);
@@ -547,37 +618,38 @@ create_pipeline :: (name: string, opts: Pipeline_Create_Options, type: Pipeline_
             }
         }
 
-        filled_info.target_info.color_target_descriptions = colour_desc.data;
-        filled_info.target_info.num_color_targets = xx opts.colour_target_count;
+        create_info.target_info.color_target_descriptions = colour_desc.data;
+        create_info.target_info.num_color_targets = xx opts.colour_target_count;
     }
 
     if opts.has_depth_target {
-        filled_info.target_info.has_depth_stencil_target = true;
-        filled_info.target_info.depth_stencil_format = .SDL_GPU_TEXTUREFORMAT_D24_UNORM;
+        create_info.target_info.has_depth_stencil_target = true;
+        create_info.target_info.depth_stencil_format = .SDL_GPU_TEXTUREFORMAT_D24_UNORM;
 
-        filled_info.depth_stencil_state.compare_op = .SDL_GPU_COMPAREOP_LESS;
-        filled_info.depth_stencil_state.enable_depth_test = opts.enable_depth_test;
-        filled_info.depth_stencil_state.enable_depth_write = opts.enable_depth_write;
+        create_info.depth_stencil_state.compare_op = .SDL_GPU_COMPAREOP_LESS;
+        create_info.depth_stencil_state.enable_depth_test = opts.enable_depth_test;
+        create_info.depth_stencil_state.enable_depth_write = opts.enable_depth_write;
     }
 
-    filled_info.rasterizer_state.cull_mode = opts.cull_mode;
-    filled_info.rasterizer_state.fill_mode = .SDL_GPU_FILLMODE_FILL;
-    filled_info.rasterizer_state.front_face = .SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE;
+    create_info.rasterizer_state.cull_mode = opts.cull_mode;
+    create_info.rasterizer_state.fill_mode = opts.fill_mode;
+    create_info.rasterizer_state.front_face = .SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE;
 
     buffers_desc: [] SDL_GPUVertexBufferDescription;
     attributes_desc: [] SDL_GPUVertexAttribute;
 
     if #complete type == {
+        case .DEBUG; #through;
         case .SHADOW;
             buffers_desc = push_view(renderer_arena, SDL_GPUVertexBufferDescription, 1);
             buffers_desc[0] = .{0, size_of(Vec3), .SDL_GPU_VERTEXINPUTRATE_VERTEX, 0};
-            filled_info.vertex_input_state.vertex_buffer_descriptions = buffers_desc.data;
-            filled_info.vertex_input_state.num_vertex_buffers = 1;
+            create_info.vertex_input_state.vertex_buffer_descriptions = buffers_desc.data;
+            create_info.vertex_input_state.num_vertex_buffers = 1;
 
             attributes_desc = push_view(renderer_arena, SDL_GPUVertexAttribute, 1);
             attributes_desc[0] = .{0, 0, .SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0};
-            filled_info.vertex_input_state.vertex_attributes = attributes_desc.data;
-            filled_info.vertex_input_state.num_vertex_attributes = 1;
+            create_info.vertex_input_state.vertex_attributes = attributes_desc.data;
+            create_info.vertex_input_state.num_vertex_attributes = 1;
         case .MESH;
             buffers_desc = push_view(renderer_arena, SDL_GPUVertexBufferDescription, 5);
             buffers_desc[0] = .{0, size_of(Vec3), .SDL_GPU_VERTEXINPUTRATE_VERTEX, 0};
@@ -585,8 +657,8 @@ create_pipeline :: (name: string, opts: Pipeline_Create_Options, type: Pipeline_
             buffers_desc[2] = .{2, size_of(Vec2), .SDL_GPU_VERTEXINPUTRATE_VERTEX, 0};
             buffers_desc[3] = .{3, size_of(Vec3), .SDL_GPU_VERTEXINPUTRATE_VERTEX, 0};
             buffers_desc[4] = .{4, size_of(Vec3), .SDL_GPU_VERTEXINPUTRATE_VERTEX, 0};
-            filled_info.vertex_input_state.vertex_buffer_descriptions = buffers_desc.data;
-            filled_info.vertex_input_state.num_vertex_buffers = 5;
+            create_info.vertex_input_state.vertex_buffer_descriptions = buffers_desc.data;
+            create_info.vertex_input_state.num_vertex_buffers = 5;
 
             attributes_desc = push_view(renderer_arena, SDL_GPUVertexAttribute, 5);
             attributes_desc[0] = .{0, 0, .SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0};
@@ -594,27 +666,24 @@ create_pipeline :: (name: string, opts: Pipeline_Create_Options, type: Pipeline_
             attributes_desc[2] = .{2, 2, .SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, 0};
             attributes_desc[3] = .{3, 3, .SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0};
             attributes_desc[4] = .{4, 4, .SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, 0};
-            filled_info.vertex_input_state.vertex_attributes = attributes_desc.data;
-            filled_info.vertex_input_state.num_vertex_attributes = 5;
+            create_info.vertex_input_state.vertex_attributes = attributes_desc.data;
+            create_info.vertex_input_state.num_vertex_attributes = 5;
     }
 
-    shader := load_shader(opts.shader_name);
-    filled_info.vertex_shader = shader.vertex;
-    filled_info.fragment_shader = shader.fragment;
+    shader := load_shader(opts.shader_options);
+    create_info.vertex_shader = shader.vertex;
+    create_info.fragment_shader = shader.fragment;
 
-    filled := SDL_CreateGPUGraphicsPipeline(context.device, *filled_info);
-
-    wireframe_info := filled_info;
-    wireframe_info.rasterizer_state.fill_mode = .SDL_GPU_FILLMODE_LINE;
-    wireframe := SDL_CreateGPUGraphicsPipeline(context.device, *wireframe_info);
+    pipeline_object := SDL_CreateGPUGraphicsPipeline(context.device, *create_info);
+    if !pipeline_object {
+        report_sdl_error("SDL_CreateGPUGraphicsPipeline", tprint("%", name));
+    }
 
     pipeline := bucket_array_add(*pipelines, .{});
-    pipeline.name = name;
-    pipeline.filled_info = filled_info;
-    pipeline.wireframe_info = wireframe_info;
+    pipeline.name = copy_string_global(name);
+    pipeline.create_info = create_info;
     pipeline.shader = shader;
-    pipeline.filled = filled;
-    pipeline.wireframe = wireframe;
+    pipeline.pipeline_object = pipeline_object;
     pipeline.needed_textures = opts.needed_textures;
 
     array_add(*shader.pipelines, pipeline);
@@ -622,8 +691,39 @@ create_pipeline :: (name: string, opts: Pipeline_Create_Options, type: Pipeline_
     return pipeline;
 }
 
+Mesh_Batch :: struct {
+    instances: [..] Instance_Data;
+
+    vertex_buffers: [] SDL_GPUBufferBinding;
+    index_buffer: SDL_GPUBufferBinding;
+
+    textures: [] SDL_GPUTextureSamplerBinding;
+
+    pipeline: *Pipeline;
+
+    flags: Command_Flags;
+
+    num_indices: int;
+}
+
+Mesh_Batcher :: struct {
+    hash_map: [] int;
+    batches: [..] Mesh_Batch;
+    total_instance_count: int;
+    initialized: bool;
+}
+
+init_mesh_batcher :: (batcher: *Mesh_Batcher) {
+    zero(batcher);
+
+    batcher.hash_map = push_view(context.temp_arena, int, MAX_BATCHES);
+    for * batcher.hash_map it.* = -1;
+
+    batcher.batches = make_arena_array(context.temp_arena, Mesh_Batch);
+}
+
 calculate_light_space_matrix :: (sun: Directional_Light, camera: *Camera_Base, near_plane: float, far_plane: float) -> Mat4 {
-    projection := mat4_projection(0.125, context.aspect_ratio, near_plane, far_plane);
+    projection := mat4_projection(camera.fov, context.aspect_ratio, near_plane, far_plane);
     inverse := mat4_inverse(projection * camera.view);
 
     corners: [8] Vec4;
@@ -641,48 +741,28 @@ calculate_light_space_matrix :: (sun: Directional_Light, camera: *Camera_Base, n
     }
 
     center: Vec3;
+    min_corner := v3(FLOAT32_MAX);
+    max_corner := v3(-FLOAT32_MAX);
     for corners {
         center += it.xyz;
+        min_corner = min(min_corner, it.xyz);
+        max_corner = max(max_corner, it.xyz);
     }
     center /= v3(8.0);
+    radius := distance(max_corner, min_corner) * .5;
 
-    light_view := mat4_look_at(center - sun.direction, center);
+    texel_size := SHADOW_MAP_SIZE / (radius * 2.0);
+    light_view := mat4_scale(v3(texel_size))
+        * mat4_look_at(v3(0.0), -sun.direction);
 
-    right, top, far := -FLOAT32_MAX;
-    left, bottom, near := FLOAT32_MAX;
+    center = (light_view * v4(center, 1.0)).xyz;
+    center = v3(center.x, floor(center.yz));
+    center = (mat4_inverse(light_view) * v4(center, 1.0)).xyz;
 
-    for corners {
-        corner := (light_view * it).xyz;
+    eye := center - (sun.direction * radius * 2.0);
+    light_view = mat4_look_at(eye, center);
 
-        left = min(left, corner.x);
-        right = max(right, corner.x);
-
-        bottom = min(bottom, corner.y);
-        top = max(top, corner.y);
-
-        near = min(near, corner.z);
-        far = max(far, corner.z);
-    }
-
-    texel_size := (right - left) / SHADOW_MAP_SIZE;
-    light_center := (light_view * v4(center, 1)).xy;
-    snapped_x := floor(light_center.x / texel_size) * texel_size;
-    snapped_y := floor(light_center.y / texel_size) * texel_size;
-    offset_x := snapped_x - light_center.x;
-    offset_y := snapped_y - light_center.y;
-
-    left += offset_x;
-    right += offset_x;
-    bottom += offset_y;
-    top += offset_y;
-
-    z_mult :: 25.0;
-    if near < 0 near *= z_mult;
-    else near /= z_mult;
-    if far < 0 far /= z_mult;
-    else far *= z_mult;
-
-    light_projection := mat4_ortho(left, right, bottom, top, -near, -far);
-
-    return light_projection * light_view;
+    light_projection := mat4_ortho(-radius, radius, -radius, radius, -radius * 6.0, radius * 6.0);
+    light_matrix := light_projection * light_view;
+    return light_matrix;
 }

@@ -1,0 +1,3 @@
+
+void material_frag_main(inout Intermediates intermediates) {
+}

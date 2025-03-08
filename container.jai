@@ -112,10 +112,42 @@ for_expansion :: (array: Bucket_Array($T), body: Code, flags: For_Flags) #expand
 
 //~ temp array/view
 
+make_arena_array :: (arena: *Arena, $T: Type) -> [..] T {
+    array: [..] T;
+    array.allocator = make_arena_allocator(arena);
+    return array;
+}
+
 tarray :: ($T: Type, reserve := 0) -> [..] T {
-    return push_array(context.temp_arena, T, reserve);
+    array: [..] T;
+    array.allocator = make_arena_allocator(context.temp_arena);
+    array_reserve(*array, reserve);
+    return array;
 }
 
 tview :: ($T: Type, count: int) -> [] T {
     return push_view(context.temp_arena, T, count);
+}
+
+#scope_file
+
+make_arena_allocator :: (arena: *Arena) -> Allocator {
+    return .{arena_allocator_proc, arena};
+}
+
+arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s64,
+                         old_memory: *void, allocator_data: *void) -> *void {
+    arena := cast(*Arena) allocator_data;
+
+    if mode == {
+        case .RESIZE;
+        result := arena_alloc(arena, requested_size);
+        memcpy(result, old_memory, old_size);
+        return result;
+
+        case .ALLOCATE;
+        return arena_alloc(arena, requested_size);
+    }
+
+    return null;
 }
