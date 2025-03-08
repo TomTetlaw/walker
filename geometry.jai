@@ -88,7 +88,7 @@ query_bvh :: (bvh: *BVH, ray: Ray) -> [] Triangle {
 draw_bvh :: (bvh: *BVH, camera: *Camera_Base) {
     for bvh.nodes {
         mid := (it.bounds.min + it.bounds.max) * .5;
-        if distance(mid, camera.position) <= 500 {
+        if distance(mid, camera.position) <= 1000 {
             if it.tri_count > 0 {
                 debug_draw_bounds(it.bounds, colour_green);
             } else {

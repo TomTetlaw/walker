@@ -1,7 +1,7 @@
 
 debug_draw_bounds :: (box: Bounding_Box, colour := colour_white) {
     command: Mesh_Render_Command;
-    command.shader = .DEBUG;
+    command.shader = debug_shader;
     command.flags = .NO_CAST_SHADOW;
     command.mesh = cube_mesh;
     command.instance.colour = colour;
@@ -13,17 +13,21 @@ debug_draw_bounds :: (box: Bounding_Box, colour := colour_white) {
     add_mesh_render_command(command);
 }
 
+debug_draw_box :: (position: Vec3, scale: Vec3, colour := colour_white) {
+    command: Mesh_Render_Command;
+    command.shader = debug_shader;
+    command.flags = .NO_CAST_SHADOW;
+    command.mesh = cube_mesh;
+    command.instance.colour = colour;
+    command.instance.transform = mat4_translation(position) * mat4_scale(scale);
+
+    add_mesh_render_command(command);
+}
+
 Instance_Data :: struct {
     transform := mat4_identity;
     colour := #run rgba(1.0);
     material_params := Vec4.{1, 1, 0, 0};
-}
-
-Mesh_Shader :: enum {
-    DEBUG;
-    STATIC_MESH;
-    TERRAIN;
-    SKY;
 }
 
 Command_Flags :: enum_flags {
@@ -31,7 +35,7 @@ Command_Flags :: enum_flags {
 }
 
 Mesh_Render_Command :: struct {
-    shader: Mesh_Shader;
+    shader: *Shader;
     flags: Command_Flags;
     mesh: *Mesh;
     textures: [] *Texture;
@@ -43,17 +47,7 @@ add_mesh_render_command :: (command: Mesh_Render_Command) {
         return;
     }
 
-    pipeline: *Pipeline;
-    if #complete command.shader == {
-        case .DEBUG;
-        pipeline = debug_pipeline;
-        case .STATIC_MESH;
-        pipeline = mesh_pipeline;
-        case .TERRAIN;
-        pipeline = terrain_pipeline;
-        case .SKY;
-        pipeline = sky_pipeline;
-    }
+    pipeline := get_or_create_pipeline(command.shader.opts);
 
     hash := get_hash(pipeline.name);
     hash = get_hash(command.shader, hash);
@@ -75,21 +69,11 @@ add_mesh_render_command :: (command: Mesh_Render_Command) {
         batch.pipeline = pipeline;
         batch.flags = command.flags;
 
-        if pipeline == debug_pipeline {
-            batch.vertex_buffers = push_view(context.temp_arena, SDL_GPUBufferBinding, 1);
-            batch.vertex_buffers[0] = .{command.mesh.position_buffer, 0};
-        } else {
-            batch.vertex_buffers = push_view(context.temp_arena, SDL_GPUBufferBinding, 5);
-            batch.vertex_buffers[0] = .{command.mesh.position_buffer, 0};
-            batch.vertex_buffers[1] = .{command.mesh.colour_buffer, 0};
-            batch.vertex_buffers[2] = .{command.mesh.tex_coord_buffer, 0};
-            batch.vertex_buffers[3] = .{command.mesh.normal_buffer, 0};
-            batch.vertex_buffers[4] = .{command.mesh.tangent_buffer, 0};
-        }
+        set_vertex_buffers_for_pipeline(pipeline, *batch, command);
 
         batch.index_buffer = .{command.mesh.index_buffer, 0};
 
-        batch.textures = push_view(context.temp_arena, SDL_GPUTextureSamplerBinding, mesh_pipeline.needed_textures);
+        batch.textures = push_view(context.temp_arena, SDL_GPUTextureSamplerBinding, pipeline.needed_textures);
         fallback_texture := load_texture("missing");
         for * batch.textures {
             it.* = .{fallback_texture.texture_object, default_sampler};
@@ -160,42 +144,6 @@ Render_Scene :: struct {
     light_matrices: [shadow_cascade_count] Mat4;
 }
 
-render_debug_pass :: (scene: Render_Scene, batches: [] Mesh_Batch, swap_texture: *SDL_GPUTexture, command_buffer: *SDL_GPUCommandBuffer, opts := Opaque_Render_Target_Options.{}) {
-    colour_target := SDL_GPUColorTargetInfo.{
-        texture = swap_texture,
-        clear_color = .{0.2, 0.5, 0.8, 1},
-        load_op = .SDL_GPU_LOADOP_LOAD,
-        store_op = .SDL_GPU_STOREOP_STORE,
-    };
-
-    render_pass := SDL_BeginGPURenderPass(command_buffer, *colour_target, 1, null);
-    if !render_pass {
-        report_sdl_error("SDL_BeginGPURenderPass", "render_debug_pass");
-    }
-
-    vert_constants: Mesh_Vertex_Constants;
-    vert_constants.view = scene.camera.view;
-    vert_constants.projection = scene.camera.projection;
-
-    SDL_PushGPUVertexUniformData(command_buffer, 0, *vert_constants, size_of(Mesh_Vertex_Constants));
-
-    base_instance := 0;
-    for batch: batches {
-        defer base_instance += batch.instances.count;
-        if batch.pipeline != debug_pipeline continue;
-
-        SDL_BindGPUGraphicsPipeline(render_pass, batch.pipeline.pipeline_object);
-
-        SDL_BindGPUVertexStorageBuffers(render_pass, 0, *instance_buffer, 1);
-        SDL_BindGPUVertexBuffers(render_pass, 0, batch.vertex_buffers.data, xx batch.vertex_buffers.count);
-        SDL_BindGPUIndexBuffer(render_pass, *batch.index_buffer, .SDL_GPU_INDEXELEMENTSIZE_32BIT);
-
-        SDL_DrawGPUIndexedPrimitives(render_pass, xx batch.num_indices, xx batch.instances.count, 0, 0, xx base_instance);
-    }
-
-    SDL_EndGPURenderPass(render_pass);
-}
-
 render_shadow_pass :: (scene: *Render_Scene, batches: [] Mesh_Batch, command_buffer: *SDL_GPUCommandBuffer) {
     far_planes: [shadow_cascade_count] float;
 
@@ -220,6 +168,13 @@ render_shadow_pass :: (scene: *Render_Scene, batches: [] Mesh_Batch, command_buf
 
         scene.light_matrices[it] = calculate_light_space_matrix(scene.sun, *scene.camera, n, f);
     }
+
+    shadow_pipeline := get_or_create_pipeline(.{
+        .SHADOW,
+        shader_feature_flags_none,
+        "shadow",
+        ""
+    });
 
     for 0..shadow_cascade_count-1 {
         colour_target := SDL_GPUColorTargetInfo.{
@@ -258,23 +213,54 @@ render_shadow_pass :: (scene: *Render_Scene, batches: [] Mesh_Batch, command_buf
     }
 }
 
-Opaque_Render_Target_Options :: struct {
-    clear_colour := true;
-    clear_depth := true;
-}
-
-render_opaque_pass :: (scene: Render_Scene, batches: [] Mesh_Batch, swap_texture: *SDL_GPUTexture, command_buffer: *SDL_GPUCommandBuffer, opts := Opaque_Render_Target_Options.{}) {
+render_debug_pass :: (scene: Render_Scene, batches: [] Mesh_Batch, swap_texture: *SDL_GPUTexture, command_buffer: *SDL_GPUCommandBuffer) {
     colour_target := SDL_GPUColorTargetInfo.{
         texture = swap_texture,
         clear_color = .{0.2, 0.5, 0.8, 1},
-        load_op = ifx opts.clear_colour then .SDL_GPU_LOADOP_CLEAR else .SDL_GPU_LOADOP_LOAD,
+        load_op = .SDL_GPU_LOADOP_LOAD,
+        store_op = .SDL_GPU_STOREOP_STORE,
+    };
+
+    render_pass := SDL_BeginGPURenderPass(command_buffer, *colour_target, 1, null);
+    if !render_pass {
+        report_sdl_error("SDL_BeginGPURenderPass", "render_debug_pass");
+    }
+
+    vert_constants: Mesh_Vertex_Constants;
+    vert_constants.view = scene.camera.view;
+    vert_constants.projection = scene.camera.projection;
+
+    SDL_PushGPUVertexUniformData(command_buffer, 0, *vert_constants, size_of(Mesh_Vertex_Constants));
+
+    base_instance := 0;
+    for batch: batches {
+        defer base_instance += batch.instances.count;
+        if batch.pipeline.shader.domain != .DEBUG continue;
+
+        SDL_BindGPUGraphicsPipeline(render_pass, batch.pipeline.pipeline_object);
+
+        SDL_BindGPUVertexStorageBuffers(render_pass, 0, *instance_buffer, 1);
+        SDL_BindGPUVertexBuffers(render_pass, 0, batch.vertex_buffers.data, xx batch.vertex_buffers.count);
+        SDL_BindGPUIndexBuffer(render_pass, *batch.index_buffer, .SDL_GPU_INDEXELEMENTSIZE_32BIT);
+
+        SDL_DrawGPUIndexedPrimitives(render_pass, xx batch.num_indices, xx batch.instances.count, 0, 0, xx base_instance);
+    }
+
+    SDL_EndGPURenderPass(render_pass);
+}
+
+render_opaque_pass :: (scene: Render_Scene, batches: [] Mesh_Batch, swap_texture: *SDL_GPUTexture, command_buffer: *SDL_GPUCommandBuffer) {
+    colour_target := SDL_GPUColorTargetInfo.{
+        texture = swap_texture,
+        clear_color = .{0.2, 0.5, 0.8, 1},
+        load_op = .SDL_GPU_LOADOP_CLEAR,
         store_op = .SDL_GPU_STOREOP_STORE,
     };
 
     depth_target := SDL_GPUDepthStencilTargetInfo.{
         texture = mesh_depth_texture,
         clear_depth = 1,
-        load_op = ifx opts.clear_depth then .SDL_GPU_LOADOP_CLEAR else .SDL_GPU_LOADOP_LOAD,
+        load_op = .SDL_GPU_LOADOP_CLEAR,
         store_op = .SDL_GPU_STOREOP_STORE,
     };
 
@@ -291,7 +277,7 @@ render_opaque_pass :: (scene: Render_Scene, batches: [] Mesh_Batch, swap_texture
 
     frag_constants: Mesh_Fragment_Constants;
     frag_constants.camera_position = v4(scene.camera.position, 0.0);
-    frag_constants.camera_direction = v4(scene.camera.view[3].xyz, 0.0);
+    frag_constants.camera_direction = v4(scene.camera.view[0].xyz, 0.0);
     frag_constants.light_params = scene.sun.params;
     frag_constants.directional_light_dir = v4(normalize(scene.sun.direction), 0);
     frag_constants.directional_light_colour = scene.sun.colour;
@@ -305,7 +291,7 @@ render_opaque_pass :: (scene: Render_Scene, batches: [] Mesh_Batch, swap_texture
     base_instance := 0;
     for batch: batches {
         defer base_instance += batch.instances.count;
-        if batch.pipeline == debug_pipeline continue;
+        if batch.pipeline.shader.domain == .DEBUG continue;
 
         SDL_BindGPUGraphicsPipeline(render_pass, batch.pipeline.pipeline_object);
 
@@ -399,46 +385,12 @@ render_scene :: (scene: Render_Scene) {
 init_renderer :: () {
     renderer_arena = make_arena();
 
-    mesh_pipeline_options := Pipeline_Create_Options.{
-        has_colour_target = true,
-        has_depth_target = true,
-        enable_depth_test = true,
-        enable_depth_write = true,
-        enable_alpha_blending = true,
-        cull_mode = .SDL_GPU_CULLMODE_BACK,
-        shader_options = .{"static_mesh", "static_mesh", shader_feature_flags_static_mesh},
-        needed_textures = 2
-    };
-
-    mesh_pipeline = create_pipeline("mesh_render_pipeline", mesh_pipeline_options, .MESH);
-
-    terrain_pipeline_options := mesh_pipeline_options;
-    terrain_pipeline_options.shader_options = .{"static_mesh", "terrain", shader_feature_flags_static_mesh};
-
-    terrain_pipeline = create_pipeline("terrain_render_pipeline", terrain_pipeline_options, .MESH);
-
-    sky_pipeline_options := mesh_pipeline_options;
-    sky_pipeline_options.shader_options = .{"static_mesh", "sky", shader_feature_flags_none};
-
-    sky_pipeline = create_pipeline("sky_render_pipeline", sky_pipeline_options, .MESH);
-
-    shadow_pipeline_options := Pipeline_Create_Options.{
-        has_colour_target = true,
-        uses_swap_texture = false,
-        cull_mode = .SDL_GPU_CULLMODE_FRONT,
-        shader_options = .{"shadow", "", shader_feature_flags_none}
-    };
-
-    shadow_pipeline = create_pipeline("shadow_render_pipeline", shadow_pipeline_options, .SHADOW);
-
-    debug_pipeline_options := Pipeline_Create_Options.{
-        has_colour_target = true,
-        cull_mode = .SDL_GPU_CULLMODE_NONE,
-        fill_mode = .SDL_GPU_FILLMODE_LINE,
-        shader_options = .{"debug", "", shader_feature_flags_none}
-    };
-
-    debug_pipeline = create_pipeline("debug_render_pipeline", debug_pipeline_options, .DEBUG);
+    debug_shader = load_shader(.{
+        .DEBUG,
+        shader_feature_flags_none,
+        "debug",
+        "",
+    });
 
     mesh_depth_create_info := SDL_GPUTextureCreateInfo.{
         type = .SDL_GPU_TEXTURETYPE_2D,
@@ -513,6 +465,7 @@ Pipeline :: struct {
     name: string;
     shader: *Shader;
 
+    opts: Pipeline_Options;
     create_info: SDL_GPUGraphicsPipelineCreateInfo;
     pipeline_object: *SDL_GPUGraphicsPipeline;
 
@@ -523,6 +476,26 @@ recreate_pipeline :: (pipeline: *Pipeline) {
     pipeline.create_info.vertex_shader = pipeline.shader.vertex;
     pipeline.create_info.fragment_shader = pipeline.shader.fragment;
     pipeline.pipeline_object = SDL_CreateGPUGraphicsPipeline(context.device, *pipeline.create_info);
+}
+
+Pipeline_Domain :: enum {
+    DEBUG;
+    SHADOW;
+    MESH;
+}
+
+Pipeline_Options :: struct {
+    has_colour_target: bool;
+    colour_target_count := 1;
+    uses_swap_texture := true;
+    has_depth_target: bool;
+    enable_depth_test: bool;
+    enable_depth_write: bool;
+    enable_alpha_blending: bool;
+    cull_mode := SDL_GPUCullMode.SDL_GPU_CULLMODE_BACK;
+    fill_mode := SDL_GPUFillMode.SDL_GPU_FILLMODE_FILL;
+    shader_options: Shader_Options;
+    needed_textures: int;
 }
 
 #scope_file
@@ -555,11 +528,89 @@ SHADOW_MAP_SIZE :: 1024;
 renderer_arena: *Arena;
 
 pipelines: Bucket_Array(Pipeline);
-mesh_pipeline: *Pipeline;
-terrain_pipeline: *Pipeline;
-shadow_pipeline: *Pipeline;
-sky_pipeline: *Pipeline;
-debug_pipeline: *Pipeline;
+
+get_or_create_pipeline :: (shader_options: Shader_Options) -> *Pipeline {
+    mesh_pipeline_options :: Pipeline_Options.{
+        has_colour_target = true,
+        has_depth_target = true,
+        enable_depth_test = true,
+        enable_depth_write = true,
+        enable_alpha_blending = true,
+        cull_mode = .SDL_GPU_CULLMODE_BACK,
+        needed_textures = 2
+    };
+
+    debug_pipeline_options :: Pipeline_Options.{
+        has_colour_target = true,
+        cull_mode = .SDL_GPU_CULLMODE_NONE,
+        fill_mode = .SDL_GPU_FILLMODE_LINE,
+    };
+
+    shadow_pipeline_options :: Pipeline_Options.{
+        has_colour_target = true,
+        uses_swap_texture = false,
+        cull_mode = .SDL_GPU_CULLMODE_FRONT,
+    };
+
+    opts: Pipeline_Options;
+    if #complete shader_options.domain == {
+        case .MESH;
+        opts = mesh_pipeline_options;
+
+        case .DEBUG;
+        opts = debug_pipeline_options;
+
+        case .SHADOW;
+        opts = shadow_pipeline_options;
+    }
+
+    opts.shader_options = shader_options;
+
+    for * pipelines {
+        if opts == it.opts {
+            return it;
+        }
+    }
+
+    name := tprint("%_%", opts.shader_options.domain, get_shader_name(opts.shader_options));
+    print("Pipeline not cached, creating a new one: %\n", name);
+
+    return create_pipeline(name, opts);
+}
+
+set_vertex_buffers_for_pipeline :: (pipeline: *Pipeline, batch: *Mesh_Batch, command: Mesh_Render_Command) {
+    if #complete pipeline.shader.domain == {
+        case .DEBUG; #through;
+        case .SHADOW;
+            batch.vertex_buffers = push_view(context.temp_arena, SDL_GPUBufferBinding, 1);
+            batch.vertex_buffers[0] = .{command.mesh.position_buffer, 0};
+        case .MESH;
+            batch.vertex_buffers = push_view(context.temp_arena, SDL_GPUBufferBinding, 5);
+            batch.vertex_buffers[0] = .{command.mesh.position_buffer, 0};
+            batch.vertex_buffers[1] = .{command.mesh.colour_buffer, 0};
+            batch.vertex_buffers[2] = .{command.mesh.tex_coord_buffer, 0};
+            batch.vertex_buffers[3] = .{command.mesh.normal_buffer, 0};
+            batch.vertex_buffers[4] = .{command.mesh.tangent_buffer, 0};
+    }
+}
+
+operator == :: (a: Pipeline_Options, b: Pipeline_Options) -> bool {
+    if a.has_colour_target != b.has_colour_target return false;
+    if a.colour_target_count != b.colour_target_count return false;
+    if a.uses_swap_texture != b.uses_swap_texture return false;
+    if a.has_depth_target != b.has_depth_target return false;
+    if a.enable_depth_test != b.enable_depth_test return false;
+    if a.enable_depth_write != b.enable_depth_write return false;
+    if a.enable_alpha_blending != b.enable_alpha_blending return false;
+    if a.cull_mode != b.cull_mode return false;
+    if a.fill_mode != b.fill_mode return false;
+    if a.needed_textures != b.needed_textures return false;
+    if a.shader_options != b.shader_options return false;
+
+    return true;
+}
+
+debug_shader: *Shader;
 
 default_texture: *Texture;
 
@@ -575,27 +626,7 @@ MAX_INSTANCES :: 100000;
 instance_buffer: *SDL_GPUBuffer;
 instance_transfer_buffer: *SDL_GPUTransferBuffer;
 
-Pipeline_Create_Options :: struct {
-    has_colour_target: bool;
-    colour_target_count := 1;
-    uses_swap_texture := true;
-    has_depth_target: bool;
-    enable_depth_test: bool;
-    enable_depth_write: bool;
-    enable_alpha_blending: bool;
-    cull_mode := SDL_GPUCullMode.SDL_GPU_CULLMODE_BACK;
-    fill_mode := SDL_GPUFillMode.SDL_GPU_FILLMODE_FILL;
-    shader_options: Shader_Options;
-    needed_textures: int;
-}
-
-Pipeline_Type :: enum {
-    DEBUG;
-    SHADOW;
-    MESH;
-}
-
-create_pipeline :: (name: string, opts: Pipeline_Create_Options, type: Pipeline_Type) -> *Pipeline {
+create_pipeline :: (name: string, opts: Pipeline_Options) -> *Pipeline {
     create_info: SDL_GPUGraphicsPipelineCreateInfo;
 
     if opts.has_colour_target {
@@ -638,7 +669,7 @@ create_pipeline :: (name: string, opts: Pipeline_Create_Options, type: Pipeline_
     buffers_desc: [] SDL_GPUVertexBufferDescription;
     attributes_desc: [] SDL_GPUVertexAttribute;
 
-    if #complete type == {
+    if #complete opts.shader_options.domain == {
         case .DEBUG; #through;
         case .SHADOW;
             buffers_desc = push_view(renderer_arena, SDL_GPUVertexBufferDescription, 1);
@@ -681,6 +712,7 @@ create_pipeline :: (name: string, opts: Pipeline_Create_Options, type: Pipeline_
 
     pipeline := bucket_array_add(*pipelines, .{});
     pipeline.name = copy_string_global(name);
+    pipeline.opts = opts;
     pipeline.create_info = create_info;
     pipeline.shader = shader;
     pipeline.pipeline_object = pipeline_object;

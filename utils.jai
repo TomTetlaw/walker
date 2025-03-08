@@ -20,6 +20,23 @@ copy_string_global :: (s: string) -> string {
     return push_string(global_string_arena, s);
 }
 
+print_memberwise_compare_code :: ($T: Type) #compile_time  {
+    builder: String_Builder;
+
+    info := type_info(T);
+
+    if info.type != .STRUCT {
+        print("print_memberwise_compare_code: % is not a struct.\n", T);
+    }
+
+    struct_info := cast(*Type_Info_Struct) info;
+    for struct_info.members {
+        print_to_builder(*builder, "if a.%1 != b.%1 return false;\n", it.name);
+    }
+
+    print(builder_to_string(*builder));
+}
+
 #scope_file
 
 global_string_arena: *Arena;

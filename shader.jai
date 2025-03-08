@@ -9,7 +9,7 @@ Shader :: struct {
 }
 
 init_shader_system :: () {
-    fallback_shader = load_shader(.{"empty", "", shader_feature_flags_none});
+    fallback_shader = load_shader(.{.MESH, shader_feature_flags_none, "empty", ""});
     if !fallback_shader fatal_error("Failed to compile fallback shader");
 
     init(*shader_watcher, shader_hotload_callback, null, .MODIFIED);
@@ -30,9 +30,10 @@ shader_feature_flags_all :: cast(Shader_Feature_Flags) 0xffffffff;
 shader_feature_flags_static_mesh :: Shader_Feature_Flags.RECIEVE_LIGHTING | .RECIEVE_FOG;
 
 Shader_Options :: struct {
+    domain: Pipeline_Domain;
+    feature_flags: Shader_Feature_Flags;
     shader_name: string;
     material_name: string;
-    feature_flags: Shader_Feature_Flags;
 }
 
 operator == :: (a: Shader_Options, b: Shader_Options) -> bool {
@@ -110,6 +111,11 @@ load_shader :: (opts: Shader_Options, $force_recompile := true) -> *Shader {
     }
 
     return shader;
+}
+
+get_shader_name :: (opts: Shader_Options) -> string {
+    flags := cast(u32) opts.feature_flags;
+    return tprint("%_%_%", opts.shader_name, opts.material_name, flags);
 }
 
 #scope_file
@@ -312,11 +318,6 @@ compile_shader :: (opts: Shader_Options) -> bool {
     file_close(*compiled_file);
 
     return true;
-}
-
-get_shader_name :: (opts: Shader_Options) -> string {
-    flags := cast(u32) opts.feature_flags;
-    return tprint("%_%_%", opts.shader_name, opts.material_name, flags);
 }
 
 get_compiled_shader_path :: (opts: Shader_Options) -> string {

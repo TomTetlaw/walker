@@ -3,6 +3,7 @@ Camera_Base :: struct {
     view: Mat4;
     projection: Mat4;
     position: Vec3;
+    forward: Vec3;
     fov := 0.125;
     near_plane := 0.01;
     far_plane := 5000.0;
@@ -48,6 +49,7 @@ flying_camera_apply_input :: (camera: *Flying_Camera, input: Frame_Input) {
 
     camera.transform = mat4_translation(camera.position) * mat4_rotation(camera.rotation);
     camera.view = mat4_inverse(camera.transform);
+    camera.forward = camera.view[0].xyz;
 
     camera.projection = mat4_projection(camera.fov, context.aspect_ratio, camera.near_plane, camera.far_plane);
 }

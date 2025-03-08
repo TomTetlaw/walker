@@ -83,6 +83,12 @@ remove_entity :: (entity: *Entity) {
 
 init_entity_system :: () {
     entity_arena = make_arena();
+    entity_shader = load_shader(.{
+        .MESH,
+        shader_feature_flags_static_mesh,
+        "static_mesh",
+        "static_mesh"
+    });
 }
 
 update_entities :: () {
@@ -113,7 +119,7 @@ update_entities :: () {
 render_entities :: () {
     for entity_list {
         command: Mesh_Render_Command;
-        command.shader = .STATIC_MESH;
+        command.shader = entity_shader;
         command.mesh = it.mesh;
         command.textures = it.textures;
         command.transform = mat4_translation(it.draw_p) * mat4_scale(it.scale) * mat4_rotation(it.rotation);
@@ -134,6 +140,8 @@ active_entities :: (array: Bucket_Array($T), body: Code, flags: For_Flags) #expa
 entity_arena: *Arena;
 
 #scope_file
+
+entity_shader: *Shader;
 
 total_entity_count: int;
 next_entity_id: int;

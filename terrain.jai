@@ -47,7 +47,7 @@ Terrain_Layer :: struct {
 render_terrain :: (terrain: Terrain, layers: [] Terrain_Layer, camera: *Camera_Base) {
     for terrain.meshes {
         command: Mesh_Render_Command;
-        command.shader = .TERRAIN;
+        command.shader = terrain_shader;
         command.flags = .NO_CAST_SHADOW;
         command.mesh = it.mesh;
 
@@ -65,9 +65,18 @@ render_terrain :: (terrain: Terrain, layers: [] Terrain_Layer, camera: *Camera_B
 
 init_terrain_system :: () {
     terrain_arena = make_arena();
+
+    terrain_shader = load_shader(.{
+        .MESH,
+        shader_feature_flags_static_mesh,
+        "static_mesh",
+        "terrain"
+    });
 }
 
 #scope_file
+
+terrain_shader: *Shader;
 
 terrain_arena: *Arena;
 

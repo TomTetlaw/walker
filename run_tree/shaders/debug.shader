@@ -33,6 +33,8 @@ struct Frag_Output {
 	float4 colour: SV_Target;
 };
 
+// INSERT_MATERIAL_HERE
+
 Frag_Output frag_main(Vert_Output input) {
 	Frag_Output output;
 	output.colour = input.colour;

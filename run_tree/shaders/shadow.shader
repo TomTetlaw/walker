@@ -29,6 +29,8 @@ struct Frag_Output {
 	float depth: SV_Target;
 };
 
+// INSERT_MATERIAL_HERE
+
 Frag_Output frag_main(Vert_Output input) {
 	Frag_Output output;
 	output.depth = input.position.x;
