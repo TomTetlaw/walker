@@ -5,15 +5,24 @@ Entity_Handle :: struct {
     entity: *Entity;
 }
 
+Entity_Flags :: enum_flags {
+    NO_PHYSICS;
+    USE_DRAW_POSITION_OVERRIDE;
+    POSITION_ABOVE_GROUND;
+}
+
 Entity :: struct {
     using handle: Entity_Handle;
 
-    active: bool;
     marked_for_removal: bool;
 
     frame_spawned: int;
     spawn_time: float;
     spawned_this_frame: bool;
+
+    flags: Entity_Flags;
+
+    height_above_ground: float;
 
     default_mesh_name: string;
     default_texture_names: [8] string;
@@ -22,11 +31,12 @@ Entity :: struct {
     textures: [] *Texture;
 
     p, p0: Vec3;
-    dp, ddp: Vec3;
+    dp: Vec3;
 
     scale := #run v3(1.0);
     rotation: Quaternion;
 
+    phys_p: Vec3;
     draw_p: Vec3;
 }
 
@@ -66,15 +76,12 @@ make_entity :: ($T: Type) -> *T {
     next_entity_id += 1;
     total_entity_count += 1;
 
-    return entity;
-}
-
-spawn_entity :: (entity: *Entity) {
-    entity.active = true;
     entity.spawned_this_frame = true;
     entity.spawn_time = game_time;
     entity.frame_spawned = frame_num;
     entity.p0 = entity.p;
+
+    return entity;
 }
 
 remove_entity :: (entity: *Entity) {
@@ -92,20 +99,11 @@ init_entity_system :: () {
 }
 
 update_entities :: () {
+    for_all_entities(remove_marked_entity);
+
     mark := arena_push_mark(context.temp_arena);
-    build_entity_list(context.temp_arena, true);
-    all_entities := arena_to_view(context.temp_arena, *Entity, mark);
-
-    for all_entities {
-        if it.marked_for_removal {
-            remove_entity_by_type(it);
-        }
-    }
-
-    mark = arena_push_mark(context.temp_arena);
     build_entity_list(context.temp_arena);
-    view := arena_to_view(context.temp_arena, *Entity, mark);
-    entity_list = view;
+    entity_list = arena_to_view(context.temp_arena, *Entity, mark);
 
     for entity_list {
         if frame_num > it.frame_spawned {
@@ -114,6 +112,24 @@ update_entities :: () {
     }
 
     simulate_physics();
+
+    for entity_list {
+        if !(it.flags & .USE_DRAW_POSITION_OVERRIDE) {
+            true_position: Vec3;
+            if it.flags & .NO_PHYSICS {
+                true_position = it.p;
+            } else {
+                true_position = it.phys_p;
+            }
+
+            it.draw_p = true_position;
+
+            if it.flags & .POSITION_ABOVE_GROUND {
+                hit, height := get_ground_height(context.terrain, it.draw_p.xy);
+                it.draw_p = v3(it.draw_p.xy, height + it.height_above_ground);
+            }
+        }
+    }
 }
 
 render_entities :: () {
@@ -127,19 +143,15 @@ render_entities :: () {
     }
 }
 
-active_entities :: (array: Bucket_Array($T), body: Code, flags: For_Flags) #expand {
-    R :: cast(bool) (flags & .REVERSE);
-    P :: cast(bool) (flags & .POINTER);
-    for *=P <=R`it, `it_index: array.occupied {
-        if !it.active continue;
-        if it.marked_for_removal continue;
-#insert body;
-    }
-}
-
 entity_arena: *Arena;
 
 #scope_file
+
+remove_marked_entity :: ($T: Type, array: *Bucket_Array(T), entity: *Entity) {
+    if entity.marked_for_removal {
+        bucket_array_remove(array, cast(*T) entity);
+    }
+}
 
 entity_shader: *Shader;
 

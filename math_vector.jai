@@ -93,9 +93,9 @@ operator - :: inline (v: Vec4) -> Vec4 { return .{-v.x, -v.y, -v.z, -v.w}; }
 operator * :: inline (a: Vec2, b: Vec2) -> Vec2 #symmetric { return .{a.x * b.x, a.y * b.y}; }
 operator * :: inline (a: Vec3, b: Vec3) -> Vec3 #symmetric { return .{a.x * b.x, a.y * b.y, a.z * b.z}; }
 operator * :: inline (a: Vec4, b: Vec4) -> Vec4 #symmetric { return .{a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w}; }
-operator * :: inline (a: Vec2, b: float) -> Vec2 { return .{a.x * b, a.y * b}; }
-operator * :: inline (a: Vec3, b: float) -> Vec3 { return .{a.x * b, a.y * b, a.z * b}; }
-operator * :: inline (a: Vec4, b: float) -> Vec4 { return .{a.x * b, a.y * b, a.z * b, a.w * b}; }
+operator * :: inline (a: Vec2, b: float) -> Vec2 #symmetric { return .{a.x * b, a.y * b}; }
+operator * :: inline (a: Vec3, b: float) -> Vec3 #symmetric { return .{a.x * b, a.y * b, a.z * b}; }
+operator * :: inline (a: Vec4, b: float) -> Vec4 #symmetric { return .{a.x * b, a.y * b, a.z * b, a.w * b}; }
 
 operator / :: inline (a: Vec2, b: Vec2) -> Vec2 #symmetric { return .{a.x / b.x, a.y / b.y}; }
 operator / :: inline (a: Vec3, b: Vec3) -> Vec3 #symmetric { return .{a.x / b.x, a.y / b.y, a.z / b.z}; }
@@ -258,23 +258,23 @@ frac :: (v: Vec4) -> Vec4 {
 }
 
 random_unit_vec2 :: () -> Vec2 {
-    x := random_01();
-    y := random_01();
+    x := random_01() * 2 - 1;
+    y := random_01() * 2 - 1;
     return normalize(Vec2.{x, y});
 }
 
 random_unit_vec3 :: () -> Vec3 {
-    x := random_01();
-    y := random_01();
-    z := random_01();
+    x := random_01() * 2 - 1;
+    y := random_01() * 2 - 1;
+    z := random_01() * 2 - 1;
     return normalize(Vec3.{x, y, z});
 }
 
 random_unit_vec4 :: () -> Vec4 {
-    x := random_01();
-    y := random_01();
-    z := random_01();
-    w := random_01();
+    x := random_01() * 2 - 1;
+    y := random_01() * 2 - 1;
+    z := random_01() * 2 - 1;
+    w := random_01() * 2 - 1;
     return normalize(Vec4.{x, y, z, w});
 }
 
@@ -288,81 +288,26 @@ sin :: (v: Vec2) -> Vec2 {
     return .{sin(v.x), sin(v.y)};
 }
 
-Vec3x8 :: struct {
-    x: [8] float;
-    y: [8] float;
-    z: [8] float;
+approach :: (c: Vec2, g: Vec2, time_to_goal: float, delta: float) -> Vec2 {
+    return .{
+        approach(c.x, g.x, time_to_goal, delta),
+        approach(c.y, g.y, time_to_goal, delta)
+    };
 }
 
-make_float8 :: (f: float) -> [8] float {
-    return .[f, f, f, f, f, f, f, f];
+approach :: (c: Vec3, g: Vec3, time_to_goal: float, delta: float) -> Vec3 {
+    return .{
+        approach(c.x, g.x, time_to_goal, delta),
+        approach(c.y, g.y, time_to_goal, delta),
+        approach(c.z, g.z, time_to_goal, delta)
+    };
 }
 
-make_float8 :: (f0: float, f1: float, f2: float, f3: float, f4: float, f5: float, f6: float, f7: float) -> [8] float {
-    return .[f0, f1, f2, f3, f4, f5, f6, f7];
-}
-
-pack_vector3_soa :: (arena: *Arena, vectors: [] Vec3) -> [] Vec3x8 {
-    count := vectors.count;
-    packed_count := ((count / 8) + 7) & ~7;
-
-    packed := push_view(arena, Vec3x8, packed_count);
-    for p: 0..packed_count-1 {
-        max_index := clamp(count - p*8 - 1, 0, 7);
-        for i: 0..max_index {
-            packed[p].x[i] = vectors[p*8 + i].x;
-            packed[p].y[i] = vectors[p*8 + i].y;
-            packed[p].z[i] = vectors[p*8 + i].z;
-        }
-    }
-
-    return packed;
-}
-
-unpack_vector3_soa :: (packed: [] Vec3x8, dest: [] Vec3) {
-    count := dest.count;
-    packed_count := packed.count;
-
-    for p: 0..packed_count-1 {
-        max_index := clamp(count - p*8 - 1, 0, 7);
-        for i: 0..max_index {
-            dest[p*8 + i].x = packed[p].x[i];
-            dest[p*8 + i].y = packed[p].y[i];
-            dest[p*8 + i].z = packed[p].z[i];
-        }
-    }
-}
-
-Vec2x8 :: struct {
-    x: [8] float;
-    y: [8] float;
-}
-
-pack_vector2_soa :: (arena: *Arena, vectors: [] Vec2) -> [] Vec2x8 {
-    count := vectors.count;
-    packed_count := (count + 7) & ~7;
-
-    packed := push_view(arena, Vec2x8, packed_count);
-    for p: 0..packed_count-1 {
-        max_index := min(0, count - p*8);
-        for i: 0..max_index-1 {
-            packed[p].x[i] = vectors[p*8 + i].x;
-            packed[p].y[i] = vectors[p*8 + i].y;
-        }
-    }
-
-    return packed;
-}
-
-unpack_vector2_soa :: (packed: [] Vec2x8, dest: [] Vec2) {
-    count := dest.count;
-    packed_count := packed.count;
-
-    for p: 0..packed_count-1 {
-        max_index := min(0, count - p*8);
-        for i: 0..max_index-1 {
-            dest[p*8 + i].x = packed[p].x[i];
-            dest[p*8 + i].y = packed[p].y[i];
-        }
-    }
+approach :: (c: Vec4, g: Vec4, time_to_goal: float, delta: float) -> Vec4 {
+    return .{
+        approach(c.x, g.x, time_to_goal, delta),
+        approach(c.y, g.y, time_to_goal, delta),
+        approach(c.z, g.z, time_to_goal, delta),
+        approach(c.w, g.w, time_to_goal, delta)
+    };
 }

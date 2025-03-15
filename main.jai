@@ -8,6 +8,8 @@
 #add_context window: *SDL_Window;
 #add_context device: *SDL_GPUDevice;
 
+#add_context terrain: Terrain;
+
 game_paused: bool;
 game_delta: float;
 game_time: float;
@@ -19,11 +21,36 @@ Options :: struct {
     fullscreen := false;
 }
 
-Test_Entity :: struct {
+Player :: struct {
     using #as base: Entity;
-    next, prev: *Test_Entity;
+    next, prev: *Player;
 
-    default_texture_names[0] = "uv_check";
+    base.flags = .POSITION_ABOVE_GROUND;
+
+    walk_speed :: 4.7;
+    run_speed :: 9.6;
+    crouch_speed :: 2.5;
+    stand_height :: 6.0;
+    crouch_height :: 3.0;
+
+    camera: Player_Camera;
+}
+
+Traveller :: struct {
+    using #as base: Entity;
+    next, prev: *Traveller;
+
+    base.flags = .POSITION_ABOVE_GROUND;
+    base.height_above_ground = 1.0;
+
+    base.default_mesh_name = "unit_cube";
+    base.default_texture_names[0] = "uv_check";
+    base.default_texture_names[1] = "grass_normal";
+
+    base.scale = #run v3(1);
+
+    last_goal_time: float;
+    goal_position: Vec2;
 }
 
 main :: () {
@@ -90,19 +117,19 @@ main :: () {
 
     camera: Flying_Camera;
 
-    for y: -10..10 for x: -10..10 {
-        e := make_entity(Test_Entity);
-        e.p = .{cast(float) x * 100, cast(float) y * 100, 55};
-        e.scale = v3(15);
-        e.mesh = cube_mesh;
-        spawn_entity(e);
-    }
+    use_flying_camera := true;
 
     opts: Terrain_Options;
-    opts.subdivisions = 6;
+    opts.subdivisions = 8;
     opts.size = v2(10000.0);
 
-    terrain := create_terrain(opts);
+    context.terrain = create_terrain(opts);
+
+    player := make_entity(Player);
+
+    for 0..99 {
+        make_entity(Traveller);
+    }
 
     old_time := current_time_monotonic();
     while main_loop := true {
@@ -152,27 +179,65 @@ main :: () {
 
         //~ simulate
 
-        flying_camera_apply_input(*camera, context.input);
+        if key_pressed(context.input, .F1) use_flying_camera = !use_flying_camera;
+        if use_flying_camera {
+            flying_camera_apply_input(*camera, context.input);
+        } else {
+            for * _Player {
+                player_camera_apply_input(*it.camera, context.input);
+
+                move_speed := Player.walk_speed;
+                eye_height := Player.stand_height;
+
+                if key_state(context.input, .LCTRL) {
+                    move_speed = Player.crouch_speed;
+                    eye_height = player.crouch_height;
+                } else {
+                    if key_state(context.input, .LSHIFT) move_speed = Player.run_speed;
+                }
+
+                move_input: Vec2;
+                move_input.x = key_state(context.input, .W) - key_state(context.input, .S);
+                move_input.y = key_state(context.input, .A) - key_state(context.input, .D);
+                move_input = normalize(move_input);
+                move_input = rotate(move_input, player.camera.yaw);
+
+                goal_dp := v3(move_input * move_speed, 0.0);
+                it.dp = approach(it.dp, goal_dp, 0.5, game_delta);
+
+                it.height_above_ground = approach(it.height_above_ground, eye_height, 0.5, game_delta);
+            }
+        }
+
+        for * _Traveller {
+            if game_time - it.last_goal_time > 5.0 {
+                it.goal_position = random_unit_vec2() * 200;
+                it.last_goal_time = game_time;
+            }
+
+            dir := normalize(it.p.xy - it.goal_position);
+            it.dp = v3(dir * 50, 0.0);
+        }
 
         update_entities();
 
-        yaw := quat_from_axis_angle(.{0, 0, 1}, game_delta*0.02);
-        pitch := quat_from_axis_angle(.{1, 0, 0}, game_delta*0.02);
-        rotation := yaw * pitch;
-
-        for * :active_entities _Test_Entity {
-            it.rotation *= rotation;
-        }
+        // @HACK
+        player.camera.position = player.draw_p;
 
         //~ render
 
         renderer_begin_frame();
 
         render_entities();
-        render_terrain(terrain, .[], *camera);
+        render_terrain(context.terrain, .[], *camera);
 
         scene: Render_Scene;
-        scene.camera = camera;
+        if use_flying_camera {
+            scene.camera = camera;
+        } else {
+            scene.camera = player.camera;
+        }
+
         scene.sun = .{
             direction = normalize(Vec3.{1,1,1} - .{5,5,5}),
             params = .{0.3, 1.0, 1.0, 2.0},

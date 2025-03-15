@@ -31,9 +31,9 @@ ray_intersects_box :: (box: Bounding_Box, ray: Ray) -> bool {
     t_min := min(t1, t2);
     t_max := max(t1, t2);
 
-    for 0..1 {
+    for 0..2 {
         t1 = (box.min[it] - ray.origin[it]) * inv_dir[it];
-        t1 = (box.max[it] - ray.origin[it]) * inv_dir[it];
+        t2 = (box.max[it] - ray.origin[it]) * inv_dir[it];
 
         t_min = max(t_min, min(t1, t2));
         t_max = min(t_max, max(t1, t2));
@@ -42,26 +42,88 @@ ray_intersects_box :: (box: Bounding_Box, ray: Ray) -> bool {
     return t_max > max(t_min, 0.0);
 }
 
+Ray_Triangle_Hit :: struct {
+    t: float;
+    hit_point: Vec3;
+    tri: BVH_Triangle;
+}
+
+ray_intersects_triangles :: (tris: [] BVH_Triangle, ray: Ray) -> bool, Ray_Triangle_Hit {
+    best_t := FLOAT32_MAX;
+    best_hit: Ray_Triangle_Hit;
+
+    e :: 0.00001;
+
+    for tris {
+        h := cross_product(ray.direction, it.e1);
+        a := dot_product(it.e0, h);
+        if abs(a) < e continue;
+
+        f := 1.0 / a;
+        s := ray.origin - it.p0;
+        u := f * dot_product(s, h);
+        if u < 0.0 || u > 1.0 continue;
+
+        q := cross_product(s, it.e0);
+        v := f * dot_product(ray.direction, q);
+        if v < 0.0 || u + v > 1.0 continue;
+
+        t := f * dot_product(it.e1, q);
+        if t > e {
+            if t < best_t {
+                best_t = t;
+                best_hit = .{t, ray.origin + t * ray.direction, it};
+            }
+        }
+    }
+
+    if best_t < FLOAT32_MAX {
+        return true, best_hit;
+    }
+
+    return false, .{};
+}
+
+BVH_Triangle :: struct {
+    p0, p1, p2: Vec3;
+    e0, e1: Vec3;
+    centroid: Vec3;
+    source_index: u32;
+}
+
 BVH_Node :: struct {
     bounds: Bounding_Box;
-    tri_count: int;
-    left_or_first_tri: int;
+    tri_count: u32;
+    left_or_first_tri: u32;
 }
 
 BVH :: struct {
     nodes: [] BVH_Node;
     tri_index: [] int;
-    triangles: [] Triangle;
+    triangles: [] BVH_Triangle;
     nodes_used: int;
 }
 
 build_bvh :: (arena: *Arena, triangles: [] Triangle) -> BVH {
+    assert(triangles.count < U32_MAX);
+
     profile_scope("build_bvh");
 
     result: BVH;
 
     result.nodes = push_view(arena, BVH_Node, triangles.count * 2 - 1);
-    result.triangles = triangles;
+    result.triangles = push_view(arena, BVH_Triangle, triangles.count);
+    for * result.triangles {
+        tri := triangles[it_index];
+        it.p0 = tri.p0;
+        it.p1 = tri.p1;
+        it.p2 = tri.p2;
+        it.centroid = (tri.p0 + tri.p1 + tri.p2) / v3(3.0);
+        it.source_index = xx it_index;
+        it.e0 = tri.p1 - tri.p0;
+        it.e1 = tri.p2 - tri.p0;
+    }
+
     result.tri_index = push_view(arena, int, triangles.count);
     for * result.tri_index {
         it.* = xx it_index;
@@ -77,15 +139,34 @@ build_bvh :: (arena: *Arena, triangles: [] Triangle) -> BVH {
     return result;
 }
 
-query_bvh :: (bvh: *BVH, ray: Ray) -> [] Triangle {
-    triangles := tarray(Triangle);
+query_bvh :: (bvh: *BVH, ray: Ray) -> [] BVH_Triangle {
+    triangles := tarray(BVH_Triangle);
 
-    query_nodes(bvh, *triangles, ray, 0);
+    stack := tarray(int);
+    array_add(*stack, 0);
+
+    while stack.count > 0 {
+        index := stack[stack.count - 1];
+        stack.count -= 1;
+
+        node := *bvh.nodes[index];
+        if !ray_intersects_box(node.bounds, ray) continue;
+
+        if node.tri_count == 0 {
+            array_add(*stack, node.left_or_first_tri);
+            array_add(*stack, node.left_or_first_tri + 1);
+        } else {
+            for 0..node.tri_count-1 {
+                tri := bvh.triangles[bvh.tri_index[node.left_or_first_tri + it]];
+                array_add(*triangles, tri);
+            }
+        }
+    }
 
     return triangles;
 }
 
-draw_bvh :: (bvh: *BVH, camera: *Camera_Base) {
+draw_bvh :: (bvh: BVH, camera: *Camera_Base) {
     for bvh.nodes {
         mid := (it.bounds.min + it.bounds.max) * .5;
         if distance(mid, camera.position) <= 1000 {
@@ -99,22 +180,6 @@ draw_bvh :: (bvh: *BVH, camera: *Camera_Base) {
 }
 
 #scope_file
-
-query_nodes :: (bvh: *BVH, triangles: *[..] Triangle, ray: Ray, index: int) {
-    node := *bvh.nodes[index];
-
-    if !ray_intersects_box(node.bounds, ray) return;
-
-    if node.tri_count == 0 {
-        query_nodes(bvh, triangles, ray, node.left_or_first_tri);
-        query_nodes(bvh, triangles, ray, node.left_or_first_tri + 1);
-    } else {
-        for 0..node.tri_count-1 {
-            tri := bvh.triangles[bvh.tri_index[node.left_or_first_tri + it]];
-            array_add(triangles, tri);
-        }
-    }
-}
 
 subdivide :: (bvh: *BVH, index: int, depth := 0) {
     node := *bvh.nodes[index];
@@ -131,9 +196,8 @@ subdivide :: (bvh: *BVH, index: int, depth := 0) {
     j := i + node.tri_count - 1;
     while i <= j {
         tri := bvh.triangles[bvh.tri_index[i]];
-        centroid := (tri.p0[axis] + tri.p1[axis] + tri.p2[axis]) / 3.0;
 
-        if centroid < split_pos {
+        if tri.centroid[axis] < split_pos {
             i += 1;
         } else {
             bvh.tri_index[i], bvh.tri_index[j] = bvh.tri_index[j], bvh.tri_index[i];

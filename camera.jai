@@ -54,6 +54,33 @@ flying_camera_apply_input :: (camera: *Flying_Camera, input: Frame_Input) {
     camera.projection = mat4_projection(camera.fov, context.aspect_ratio, camera.near_plane, camera.far_plane);
 }
 
-#scope_file
+Player_Camera :: struct {
+    using #as base: Camera_Base;
 
-#import "Print_Vars";
+    ROTATION_SPEED :: 0.3;
+    ROTATION_SMOOTHING :: 0.3;
+
+    yaw, pitch: float;
+    rotation_input: Vec2;
+
+    rotation: Quaternion;
+}
+
+player_camera_apply_input :: (camera: *Player_Camera, input: Frame_Input) {
+    camera.rotation_input = lerp(camera.rotation_input, input.mouse_delta, Player_Camera.ROTATION_SMOOTHING);
+    delta := camera.rotation_input * camera.ROTATION_SPEED;
+
+    camera.yaw += delta.x*deg2turn;
+    camera.pitch += delta.y*deg2turn;
+    camera.pitch = clamp(camera.pitch, -0.25, 0.25);
+
+    yaw := quat_from_axis_angle(.{0, 0, -1}, camera.yaw);
+    pitch := quat_from_axis_angle(.{0, 1, 0}, camera.pitch);
+    camera.rotation = yaw * pitch;
+
+    camera.transform = mat4_translation(camera.position) * mat4_rotation(camera.rotation);
+    camera.view = mat4_inverse(camera.transform);
+    camera.forward = camera.view[0].xyz;
+
+    camera.projection = mat4_projection(camera.fov, context.aspect_ratio, camera.near_plane, camera.far_plane);
+}

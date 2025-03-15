@@ -16,7 +16,7 @@ simulate_physics :: () {
 
     alpha := accumulator / physics_delta;
     for entity_list {
-        it.draw_p = lerp(it.p0, it.p, alpha);
+        it.phys_p = lerp(it.p0, it.p, alpha);
     }
 }
 
@@ -24,10 +24,11 @@ simulate_physics :: () {
 
 integrate :: (st: float, dt: float) {
     for entity_list {
-        it.dp += it.ddp * dt;
-        it.p += it.dp * dt;
+        if !(it.flags & .NO_PHYSICS) {
+            it.p += it.dp * dt;
+        }
     }
 }
 
-physics_delta :: 1.0 / 6.0;
+physics_delta :: 1.0 / 60.0;
 accumulator: float;

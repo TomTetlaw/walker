@@ -9,8 +9,10 @@ Arena :: struct {
     freed: bool;
 }
 
+#assert(size_of(Arena) < 4096);
+
 default_reserve_size :: 1024 * 1024 * 1024 * 64;
-default_commit_size :: 1024 * 128;
+default_commit_size :: 1024 * 4;
 
 make_arena :: ($L := #caller_location) -> *Arena {
     arena := linked_list_pop(*arena_free_list);
@@ -23,11 +25,7 @@ make_arena :: ($L := #caller_location) -> *Arena {
 
     page_size := get_page_size();
 
-    reserve := default_reserve_size + size_of(Arena);
-    reserve = (reserve + page_size - 1) & ~(page_size - 1);
-
-    commit := default_commit_size + size_of(Arena);
-    commit = (commit + page_size - 1) & ~(page_size - 1);
+    reserve := (default_reserve_size + page_size - 1) & ~(page_size - 1);
 
     memory := virtual_reserve(reserve);
     if !memory {
@@ -39,13 +37,16 @@ make_arena :: ($L := #caller_location) -> *Arena {
         return *stub_arena;
     }
 
-    virtual_commit(memory, commit);
+    virtual_commit(memory, page_size);
 
     arena = cast (*Arena) memory;
-    arena.base = arena + 1;
-    arena.committed = commit;
+    arena.base = memory + page_size;
     arena.reserved = reserve;
     arena.used = 0;
+
+    commit := (default_commit_size + page_size - 1) & ~(page_size - 1);
+    virtual_commit(arena.base, commit);
+    arena.committed = commit;
 
     return arena;
 }

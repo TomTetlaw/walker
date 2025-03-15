@@ -13,7 +13,7 @@ debug_draw_bounds :: (box: Bounding_Box, colour := colour_white) {
     add_mesh_render_command(command);
 }
 
-debug_draw_box :: (position: Vec3, scale: Vec3, colour := colour_white) {
+debug_draw_box :: (position: Vec3, scale := Vec3.{1, 1, 1}, colour := colour_white) {
     command: Mesh_Render_Command;
     command.shader = debug_shader;
     command.flags = .NO_CAST_SHADOW;

@@ -13,6 +13,19 @@ Terrain_Options :: struct {
     size: Vec2;
 }
 
+get_ground_height :: (terrain: Terrain, position: Vec2) -> bool, float {
+    ray := Ray.{v3(position, 1000.0), .{0, 0, -1.0}};
+    tris := query_bvh(*terrain.bvh, ray);
+    hit, hit_data := ray_intersects_triangles(tris, ray);
+    return hit, hit_data.hit_point.z;
+}
+
+get_ground_point_along_ray :: (terrain: Terrain, ray: Ray) -> bool, Vec3 {
+    tris := query_bvh(*terrain.bvh, ray);
+    hit, hit_data := ray_intersects_triangles(tris, ray);
+    return hit, hit_data.hit_point;
+}
+
 create_terrain :: (opts: Terrain_Options) -> Terrain {
     profile_scope("create_terrain");
 
@@ -60,7 +73,7 @@ render_terrain :: (terrain: Terrain, layers: [] Terrain_Layer, camera: *Camera_B
         add_mesh_render_command(command);
     }
 
-    draw_bvh(*terrain.bvh, camera);
+    // draw_bvh(*terrain.bvh, camera);
 }
 
 init_terrain_system :: () {
@@ -131,14 +144,14 @@ create_terrain_mesh :: (opts: Terrain_Options) -> *Mesh {
 apply_terrain_noise :: (opts: Terrain_Options, n: int, positions: [] Vec3) {
     perlin := noise_gen_values(
         context.temp_arena,
-        Noise_Gen_Options(noise_value_2d, fbm=true, warp=true, remap=true).{
+        Noise_Gen_Options(noise_value_2d, fbm=true, warp=false, remap=true).{
             origin = .{0, 0},
             scale = .005,
             width = n,
             height = n,
-            octaves = 10,
+            octaves = 25,
             persistence = .5,
-            warp_iterations = 3
+            warp_iterations = 15
         }
     );
 

@@ -7,7 +7,7 @@ void material_frag_main(inout Intermediates intermediates) {
 	
 	float cos_theta = dot(normalize(intermediates.normal), float3(0.0, 0.0, 1.0));
     float slope = saturate(1.0 - cos_theta);
-	float mask = smoothstep(150, 350, intermediates.local_position.z);
+	float mask = smoothstep(500, 1000, intermediates.local_position.z);
 
 	float3 colour = intermediates.colour;
 	colour *= 1 - mask;

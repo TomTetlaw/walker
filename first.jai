@@ -8,7 +8,7 @@ build :: () {
     imports: [..] string;
     array_add(*imports, "Basic", "String", "File", "sdl3", "stb_image",
         "Command_Line", "File_Utilities", "Hash", "File_Watcher", "System",
-        "Random", "Sort");
+        "Random", "Sort", "Print_Vars");
 
 #if OS == .WINDOWS array_add(*imports, "Windows");
     else #if OS == .LINUX array_add(*imports, "POSIX");
@@ -123,27 +123,21 @@ generate_code :: (cg: Code_Gen) -> string {
     }
     append(*builder, "}\n");
 
-    append(*builder, "remove_entity_by_type :: (entity: *Entity) {\n");
-    append(*builder, "\tif entity.type == {\n");
+    append(*builder, "for_all_entities :: ($func: ($T: Type, array: *Bucket_Array(T), entity: *Entity)) {\n");
     for cg.entity_types {
-        print_to_builder(*builder, "\t\tcase %1; bucket_array_remove(*_%1, cast(*%1) entity);\n", it.name);
+        print_to_builder(*builder, "{ array := get_entity_array(%1); for * _%1 func(%1, array, it); }\n", it.name);
     }
-    append(*builder, "\t}\n");
     append(*builder, "}\n");
 
     append(*builder, "all_entity_types :: Type.[\n");
     for cg.entity_types {
-        print_to_builder(*builder, "\t%", it.name);
+        print_to_builder(*builder, "\t%, ", it.name);
     }
     append(*builder, "];\n");
 
-    append(*builder, "build_entity_list :: (arena: *Arena, $include_inactive := false) {\n");
+    append(*builder, "build_entity_list :: (arena: *Arena) {\n");
     for cg.entity_types {
-        append(*builder, "#if include_inactive {\n");
         print_to_builder(*builder, "\tfor * _%1 push_value(arena, it);\n", it.name);
-        append(*builder, "} else {\n");
-        print_to_builder(*builder, "\tfor * :active_entities _%1 push_value(arena, it);\n", it.name);
-        append(*builder, "}\n");
     }
     append(*builder, "}\n");
 

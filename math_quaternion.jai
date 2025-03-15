@@ -56,6 +56,21 @@ slerp :: (a: Quaternion, b: Quaternion, t: float) -> Quaternion {
     return (a * cos(theta)) + (normalize(b - a * dot) * sin(theta));
 }
 
+approach :: (c: float, g: float, time_to_goal: float, delta: float) -> float {
+    decay :: 4.6;
+    return g + (c - g) * exp(-decay * delta * (1.0 / time_to_goal));
+}
+
+rotate :: (v: Vec2, turns: float) -> Vec2 {
+    s := sin_turns(turns);
+    c := cos_turns(turns);
+
+    return .{
+        v.x*c + v.y*s,
+        v.x*-s + v.y*c
+    };
+}
+
 rotate :: (v: Vec3, q: Quaternion) -> Vec3 {
     t := cross_product(q.xyz, v) * 2.0;
     return v + t * q.w + cross_product(q.xyz, t);
