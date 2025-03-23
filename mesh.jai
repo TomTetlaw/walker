@@ -25,9 +25,48 @@ Mesh_Data :: struct {
     indices: [] u32;
 }
 
+Mesh_Header :: struct {
+    name: string;
+    num_vertices: int;
+    num_indices: int;
+}
+
 load_mesh :: (name: string) -> *Mesh {
     for * meshes {
         if equal(it.name, name) return it;
+    }
+
+    path := tprint("meshes/%.mesh", name);
+    file, ok := file_open(path);
+    if ok {
+        mesh_name := file_read_string(*file);
+        num_vertices, num_indices: int;
+        file_read(*file, *num_vertices, size_of(int));
+        file_read(*file, *num_indices, size_of(int));
+
+        data: Mesh_Data;
+
+        data.positions = tview(Vec3, num_vertices);
+        file_read(*file, data.positions.data, size_of(Vec3) * num_vertices);
+
+        data.colours = tview(Linear_Colour, num_vertices);
+        file_read(*file, data.colours.data, size_of(Linear_Colour) * num_vertices);
+
+        data.tex_coords = tview(Vec2, num_vertices);
+        file_read(*file, data.tex_coords.data, size_of(Vec2) * num_vertices);
+
+        data.normals = tview(Vec3, num_vertices);
+        file_read(*file, data.normals.data, size_of(Vec3) * num_vertices);
+
+        data.tangents = tview(Vec3, num_vertices);
+        file_read(*file, data.tangents.data, size_of(Vec3) * num_vertices);
+
+        data.indices = tview(u32, num_indices);
+        file_read(*file, data.indices.data, size_of(u32) * num_indices);
+
+        file_close(*file);
+
+        return create_mesh(mesh_arena, name, data);
     }
 
     return fallback_mesh;

@@ -71,6 +71,10 @@ rotate :: (v: Vec2, turns: float) -> Vec2 {
     };
 }
 
+quat_to_forward :: (q: Quaternion) -> Vec3 {
+    return mat4_inverse(mat4_rotation(q))[0].xyz;
+}
+
 rotate :: (v: Vec3, q: Quaternion) -> Vec3 {
     t := cross_product(q.xyz, v) * 2.0;
     return v + t * q.w + cross_product(q.xyz, t);

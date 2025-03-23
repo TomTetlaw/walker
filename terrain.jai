@@ -80,7 +80,7 @@ init_terrain_system :: () {
     terrain_arena = make_arena();
 
     terrain_shader = load_shader(.{
-        .MESH,
+        get_pipeline_domain_options(.MESH),
         shader_feature_flags_static_mesh,
         "static_mesh",
         "terrain"

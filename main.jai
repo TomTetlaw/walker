@@ -27,6 +27,9 @@ Player :: struct {
 
     base.flags = .POSITION_ABOVE_GROUND;
 
+    base.view_model_distance = .2;
+    base.view_model_offset = .{0, -.5, 0};
+
     walk_speed :: 4.7;
     run_speed :: 9.6;
     crouch_speed :: 2.5;
@@ -49,6 +52,7 @@ Traveller :: struct {
 
     base.scale = #run v3(1);
 
+    range: float;
     last_goal_time: float;
     goal_position: Vec2;
 }
@@ -119,16 +123,18 @@ main :: () {
 
     use_flying_camera := true;
 
-    opts: Terrain_Options;
-    opts.subdivisions = 8;
-    opts.size = v2(10000.0);
+    terrain_options: Terrain_Options;
+    terrain_options.subdivisions = 8;
+    terrain_options.size = v2(10000.0);
 
-    context.terrain = create_terrain(opts);
+    context.terrain = create_terrain(terrain_options);
 
     player := make_entity(Player);
+    player.view_model = load_mesh("sword");
 
-    for 0..99 {
-        make_entity(Traveller);
+    for 0..999 {
+        traveller := make_entity(Traveller);
+        traveller.range = random_float(50, 500);
     }
 
     old_time := current_time_monotonic();
@@ -202,34 +208,34 @@ main :: () {
                 move_input = normalize(move_input);
                 move_input = rotate(move_input, player.camera.yaw);
 
-                goal_dp := v3(move_input * move_speed, 0.0);
-                it.dp = approach(it.dp, goal_dp, 0.5, game_delta);
+                goal_velocity := v3(move_input * move_speed, 0.0);
+                it.velocity = approach(it.velocity, goal_velocity, 0.5, game_delta);
 
                 it.height_above_ground = approach(it.height_above_ground, eye_height, 0.5, game_delta);
             }
         }
 
         for * _Traveller {
-            if game_time - it.last_goal_time > 5.0 {
-                it.goal_position = random_unit_vec2() * 200;
+            if game_time - it.last_goal_time > 2.0 {
+                it.goal_position = random_unit_vec2() * it.range;
                 it.last_goal_time = game_time;
             }
 
-            dir := normalize(it.p.xy - it.goal_position);
-            it.dp = v3(dir * 50, 0.0);
+            dir := normalize(it.goal_position, it.position.xy);
+            it.velocity = v3(dir * 50, 0.0);
         }
 
         update_entities();
 
         // @HACK
-        player.camera.position = player.draw_p;
+        player.camera.position = player.visual_position;
+        player.rotation = player.camera.rotation;
 
         //~ render
 
         renderer_begin_frame();
 
         render_entities();
-        render_terrain(context.terrain, .[], *camera);
 
         scene: Render_Scene;
         if use_flying_camera {
@@ -237,6 +243,8 @@ main :: () {
         } else {
             scene.camera = player.camera;
         }
+
+        render_terrain(context.terrain, .[], *scene.camera);
 
         scene.sun = .{
             direction = normalize(Vec3.{1,1,1} - .{5,5,5}),

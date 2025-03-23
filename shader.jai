@@ -2,14 +2,26 @@
 Shader :: struct {
     next, prev: *Shader;
 
+    name: string;
+
     using opts: Shader_Options;
     vertex, fragment: *SDL_GPUShader;
 
-    pipelines: [..] *Pipeline;
+    domain: Shader_Domain;
+
+    pipeline: *Pipeline;
 }
 
 init_shader_system :: () {
-    fallback_shader = load_shader(.{.MESH, shader_feature_flags_none, "empty", ""});
+    shader_arena = make_arena();
+
+    fallback_shader = load_shader(.{
+        get_pipeline_domain_options(.MESH),
+        shader_feature_flags_none,
+        "empty",
+        ""
+    });
+
     if !fallback_shader fatal_error("Failed to compile fallback shader");
 
     init(*shader_watcher, shader_hotload_callback, null, .MODIFIED);
@@ -29,8 +41,14 @@ shader_feature_flags_none :: cast(Shader_Feature_Flags) 0x00000000;
 shader_feature_flags_all :: cast(Shader_Feature_Flags) 0xffffffff;
 shader_feature_flags_static_mesh :: Shader_Feature_Flags.RECIEVE_LIGHTING | .RECIEVE_FOG;
 
+Shader_Domain :: enum {
+    DEBUG;
+    SHADOW;
+    MESH;
+}
+
 Shader_Options :: struct {
-    domain: Pipeline_Domain;
+    pipeline_options: Pipeline_Options;
     feature_flags: Shader_Feature_Flags;
     shader_name: string;
     material_name: string;
@@ -42,7 +60,7 @@ operator == :: (a: Shader_Options, b: Shader_Options) -> bool {
         a.feature_flags == b.feature_flags;
 }
 
-load_shader :: (opts: Shader_Options, $force_recompile := true) -> *Shader {
+load_shader :: (opts: Shader_Options, $skip_recompile_check := false) -> *Shader {
     shader: *Shader;
 
     for * shaders {
@@ -55,10 +73,12 @@ load_shader :: (opts: Shader_Options, $force_recompile := true) -> *Shader {
     if !shader {
         shader = bucket_array_add(*shaders, .{}, fallback_shader);
         shader.opts = opts;
+        shader.domain = opts.pipeline_options.domain;
+        shader.name = copy_string_global(get_shader_name(opts));
     }
 
     recreate := false;
-    if force_recompile || shader_needs_recompile(opts) {
+    if !skip_recompile_check && shader_needs_recompile(opts) {
         ok := compile_shader(opts);
 
         if !ok {
@@ -108,6 +128,9 @@ load_shader :: (opts: Shader_Options, $force_recompile := true) -> *Shader {
 
         shader.vertex = vert;
         shader.fragment = frag;
+
+        name := tprint("pipeline_%", get_shader_name(opts));
+        shader.pipeline = create_pipeline(name, opts.pipeline_options, shader);
     }
 
     return shader;
@@ -117,6 +140,8 @@ get_shader_name :: (opts: Shader_Options) -> string {
     flags := cast(u32) opts.feature_flags;
     return tprint("%_%_%", opts.shader_name, opts.material_name, flags);
 }
+
+shader_arena: *Arena;
 
 #scope_file
 
@@ -161,11 +186,13 @@ shader_needs_recompile :: (opts: Shader_Options) -> bool {
     file_read(*compiled, *compiled_hash, size_of(u32));
     file_close(*compiled);
 
-    path := get_shader_path(opts);
-    code, ok := read_entire_file(path,, temp);
+    code, ok := get_source_code(opts);
     if !ok return false;
 
     if get_hash(code) == compiled_hash return false;
+
+    print("Shader % needs recompile (compiled hash = %, new hash = %\n",
+        get_shader_name(opts), compiled_hash, get_hash(code));
 
     return true;
 }
@@ -239,7 +266,7 @@ get_source_code :: (opts: Shader_Options) -> string, bool {
                 material_path := get_material_path(opts);
                 material_source:, ok = read_entire_file(material_path);
                 if ok {
-                shader_source = replace(shader_source, "// INSERT_MATERIAL_HERE", material_source);
+                    shader_source = replace(shader_source, "// INSERT_MATERIAL_HERE", material_source);
                 }
             }
 
@@ -321,7 +348,8 @@ compile_shader :: (opts: Shader_Options) -> bool {
 }
 
 get_compiled_shader_path :: (opts: Shader_Options) -> string {
-    return tprint("shaders/%.compiled_shader", opts.shader_name);
+    name := get_shader_name(opts);
+    return tprint("shaders/%.compiled_shader", name);
 }
 
 get_material_path :: (opts: Shader_Options) -> string {
@@ -340,12 +368,8 @@ reload_shader :: (shader: *Shader) {
     shader.vertex = null;
     shader.fragment = null;
 
-    reloaded := load_shader(shader.opts, true);
-
-    for shader.pipelines {
-        it.shader = reloaded; // incase load_shader returns a stub
-        recreate_pipeline(it);
-    }
+    reloaded := load_shader(shader.opts);
+    recreate_pipeline(shader.pipeline, reloaded);
 
     features := make_feature_flags_name_list(shader.feature_flags);
     print("Hotloaded shader % % %\n", shader.shader_name, shader.material_name, features);

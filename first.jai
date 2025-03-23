@@ -1,7 +1,7 @@
 
 build :: () {
     profiling :: false;
-    release :: false;
+    release :: true;
 
     workspace := compiler_create_workspace("Walker");
 
@@ -13,7 +13,6 @@ build :: () {
 #if OS == .WINDOWS array_add(*imports, "Windows");
     else #if OS == .LINUX array_add(*imports, "POSIX");
 
-    lib_files: [..] string;
     plugin_names: [..] string;
 
     if profiling {
@@ -25,7 +24,6 @@ build :: () {
     options.output_executable_name = "walker";
     options.output_path = "./run_tree";
     options.text_output_flags = 0;
-    options.additional_linker_arguments = lib_files;
     #if release {
         set_optimization(*options, .VERY_OPTIMIZED);
     }
@@ -125,15 +123,9 @@ generate_code :: (cg: Code_Gen) -> string {
 
     append(*builder, "for_all_entities :: ($func: ($T: Type, array: *Bucket_Array(T), entity: *Entity)) {\n");
     for cg.entity_types {
-        print_to_builder(*builder, "{ array := get_entity_array(%1); for * _%1 func(%1, array, it); }\n", it.name);
+        print_to_builder(*builder, "{ array := get_entity_array(%1); for * _%1 inline func(%1, array, it); }\n", it.name);
     }
     append(*builder, "}\n");
-
-    append(*builder, "all_entity_types :: Type.[\n");
-    for cg.entity_types {
-        print_to_builder(*builder, "\t%, ", it.name);
-    }
-    append(*builder, "];\n");
 
     append(*builder, "build_entity_list :: (arena: *Arena) {\n");
     for cg.entity_types {

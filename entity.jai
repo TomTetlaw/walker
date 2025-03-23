@@ -28,26 +28,31 @@ Entity :: struct {
     default_texture_names: [8] string;
 
     mesh: *Mesh;
+    view_model: *Mesh;
+
     textures: [] *Texture;
 
-    p, p0: Vec3;
-    dp: Vec3;
+    position: Vec3;
+    velocity: Vec3;
+
+    forward: Vec3;
 
     scale := #run v3(1.0);
     rotation: Quaternion;
 
-    phys_p: Vec3;
-    draw_p: Vec3;
+    visual_position: Vec3;
+
+    view_model_position: Vec3;
+    view_model_distance: float;
+    view_model_offset: Vec3;
 }
 
 get_entity_bounds :: (entity: *Entity) -> Bounding_Box {
     bounds: Bounding_Box;
-    bounds.min = (entity.p - entity.mesh.bounds.min) * entity.scale;
-    bounds.max = (entity.p + entity.mesh.bounds.max) * entity.scale;
+    bounds.min = (entity.position - entity.mesh.bounds.min) * entity.scale;
+    bounds.max = (entity.position + entity.mesh.bounds.max) * entity.scale;
     return bounds;
 }
-
-entity_list: [] *Entity;
 
 make_entity :: ($T: Type) -> *T {
     array := get_entity_array(T);
@@ -79,7 +84,6 @@ make_entity :: ($T: Type) -> *T {
     entity.spawned_this_frame = true;
     entity.spawn_time = game_time;
     entity.frame_spawned = frame_num;
-    entity.p0 = entity.p;
 
     return entity;
 }
@@ -91,46 +95,53 @@ remove_entity :: (entity: *Entity) {
 init_entity_system :: () {
     entity_arena = make_arena();
     entity_shader = load_shader(.{
-        .MESH,
+        get_pipeline_domain_options(.MESH),
         shader_feature_flags_static_mesh,
         "static_mesh",
         "static_mesh"
+    });
+
+    view_model_shader = load_shader(.{
+        get_pipeline_domain_options(.MESH),
+        shader_feature_flags_static_mesh,
+        "static_mesh",
+        "static_mesh",
     });
 }
 
 update_entities :: () {
     for_all_entities(remove_marked_entity);
 
-    mark := arena_push_mark(context.temp_arena);
-    build_entity_list(context.temp_arena);
-    entity_list = arena_to_view(context.temp_arena, *Entity, mark);
+    entity_list = tarray(*Entity);
+    for_all_entities(add_to_entity_list);
 
     for entity_list {
         if frame_num > it.frame_spawned {
             it.spawned_this_frame = false;
         }
-    }
 
-    simulate_physics();
+        if !(it.flags & .NO_PHYSICS) {
+            it.position += it.velocity * game_delta;
+        }
 
-    for entity_list {
         if !(it.flags & .USE_DRAW_POSITION_OVERRIDE) {
-            true_position: Vec3;
-            if it.flags & .NO_PHYSICS {
-                true_position = it.p;
-            } else {
-                true_position = it.phys_p;
-            }
-
-            it.draw_p = true_position;
+            it.visual_position = it.position;
 
             if it.flags & .POSITION_ABOVE_GROUND {
-                hit, height := get_ground_height(context.terrain, it.draw_p.xy);
-                it.draw_p = v3(it.draw_p.xy, height + it.height_above_ground);
+                hit, height := get_ground_height(context.terrain, it.visual_position.xy);
+                it.visual_position = v3(it.visual_position.xy, height + it.height_above_ground);
             }
+
+            it.forward = quat_to_forward(it.rotation);
+
+            it.view_model_position =
+                it.visual_position +
+                it.view_model_offset +
+                it.forward * it.view_model_distance;
         }
     }
 }
+
 
 render_entities :: () {
     for entity_list {
@@ -138,14 +149,26 @@ render_entities :: () {
         command.shader = entity_shader;
         command.mesh = it.mesh;
         command.textures = it.textures;
-        command.transform = mat4_translation(it.draw_p) * mat4_scale(it.scale) * mat4_rotation(it.rotation);
+        command.transform = mat4_translation(it.visual_position) * mat4_scale(it.scale) * mat4_rotation(it.rotation);
+        add_mesh_render_command(command);
+
+        command.shader = view_model_shader;
+        command.mesh = it.view_model;
+        command.textures = .[];
+        command.transform = mat4_translation(it.view_model_position);
         add_mesh_render_command(command);
     }
 }
 
 entity_arena: *Arena;
 
+entity_list: [..] *Entity;
+
 #scope_file
+
+add_to_entity_list :: ($T: Type, array: *Bucket_Array(T), entity: *Entity) {
+    array_add(*entity_list, entity);
+}
 
 remove_marked_entity :: ($T: Type, array: *Bucket_Array(T), entity: *Entity) {
     if entity.marked_for_removal {
@@ -154,6 +177,7 @@ remove_marked_entity :: ($T: Type, array: *Bucket_Array(T), entity: *Entity) {
 }
 
 entity_shader: *Shader;
+view_model_shader: *Shader;
 
 total_entity_count: int;
 next_entity_id: int;

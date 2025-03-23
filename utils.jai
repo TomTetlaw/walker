@@ -1,4 +1,12 @@
 
+file_read_string :: (file: *File) -> string {
+    length: int;
+    file_read(file, *length, size_of(int));
+    data := talloc(length);
+    file_read(file, data, length);
+    return .{length, data};
+}
+
 tcs :: (s: string) -> *u8 {
     result := cast (*u8) arena_alloc(context.temp_arena, s.count + 1);
     if result == null return stub_c_string.data;
