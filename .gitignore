@@ -6,3 +6,4 @@
 *.raddbg_user
 *.raddbg_project
 run_tree/walker.exe
+*.blend1
