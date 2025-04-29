@@ -1,386 +1,244 @@
 
+SHADERS_DIRECTORY :: "shaders";
+SHADERS_DEBUG_DUMP_DIRECTORY :: "shaders/debug_dumps";
+
+Pipeline_Id :: enum {
+    FALLBACK;
+    STATIC_MESH;
+}
+
+Shader_Metadata :: struct {
+    pipeline := Pipeline_Id.FALLBACK;
+    vertex_input := "position";
+    instance_buffer := "transform";
+    vert_constants := "view";
+    frag_constants := "camera";
+    texture_set := "";
+}
+
 Shader :: struct {
     next, prev: *Shader;
 
     name: string;
+    id: int;
 
-    using opts: Shader_Options;
-    vertex, fragment: *SDL_GPUShader;
+    meta: Shader_Metadata;
 
-    domain: Shader_Domain;
+    vertex: *SDL_GPUShader;
+    fragment: *SDL_GPUShader;
 
-    pipeline: *Pipeline;
+    pipeline: *SDL_GPUGraphicsPipeline;
 }
 
-init_shader_system :: () {
-    shader_arena = make_arena();
-
-    fallback_shader = load_shader(.{
-        get_pipeline_domain_options(.MESH),
-        shader_feature_flags_none,
-        "empty",
-        ""
-    });
-
-    if !fallback_shader fatal_error("Failed to compile fallback shader");
-
-    init(*shader_watcher, shader_hotload_callback, null, .MODIFIED);
-    add_directories(*shader_watcher, "shaders");
-}
-
-check_shaders_modified :: () {
-    process_changes(*shader_watcher);
-}
-
-Shader_Feature_Flags :: enum_flags u32 {
-    RECIEVE_LIGHTING;
-    RECIEVE_FOG;
-}
-
-shader_feature_flags_none :: cast(Shader_Feature_Flags) 0x00000000;
-shader_feature_flags_all :: cast(Shader_Feature_Flags) 0xffffffff;
-shader_feature_flags_static_mesh :: Shader_Feature_Flags.RECIEVE_LIGHTING | .RECIEVE_FOG;
-
-Shader_Domain :: enum {
-    DEBUG;
-    SHADOW;
-    MESH;
-}
-
-Shader_Options :: struct {
-    pipeline_options: Pipeline_Options;
-    feature_flags: Shader_Feature_Flags;
-    shader_name: string;
-    material_name: string;
-}
-
-operator == :: (a: Shader_Options, b: Shader_Options) -> bool {
-    return equal(a.shader_name, b.shader_name) &&
-        equal(a.material_name, b.material_name) &&
-        a.feature_flags == b.feature_flags;
-}
-
-load_shader :: (opts: Shader_Options, $skip_recompile_check := false) -> *Shader {
-    shader: *Shader;
-
+load_shader :: (name: string, vert_entry_point := "vert_main", frag_entry_point := "frag_main") -> *Shader {
     for * shaders {
-        if opts == it.opts {
-            shader = it;
-            break;
-        }
+        if equal(name, it.name) return it;
     }
 
-    if !shader {
-        shader = bucket_array_add(*shaders, .{}, fallback_shader);
-        shader.opts = opts;
-        shader.domain = opts.pipeline_options.domain;
-        shader.name = copy_string_global(get_shader_name(opts));
-    }
+    data := read_entire_file(tprint("%/%.shader", SHADERS_DIRECTORY, name));
+    meta, code := parse_shader(name, data);
 
-    recreate := false;
-    if !skip_recompile_check && shader_needs_recompile(opts) {
-        ok := compile_shader(opts);
+    builder: String_Builder;
+    append(*builder, generate_hlsl_inputs(meta));
+    append(*builder, "#include \"shared.hlsl\"\n");
+    append(*builder, code);
+    code = builder_to_string(*builder);
 
-        if !ok {
-            return fallback_shader;
-        } else {
-            recreate = true;
-        }
-    }
+    write_entire_file(tprint("%/%.txt", SHADERS_DEBUG_DUMP_DIRECTORY, name), code);
 
-    compiled, ok := read_compiled_shader(opts);
-    if !ok {
+    vertex := create_sdl_shader(name, code, .VERTEX, vert_entry_point);
+    fragment := create_sdl_shader(name, code, .FRAGMENT, frag_entry_point);
+
+    if !vertex || !fragment {
         return fallback_shader;
     }
 
-    if recreate && shader.vertex {
-        SDL_ReleaseGPUShader(context.device, shader.vertex);
-        SDL_ReleaseGPUShader(context.device, shader.fragment);
-        shader.vertex = null;
-        shader.fragment = null;
-    }
+    shader: Shader;
+    shader.name = name;
+    shader.meta = meta;
+    shader.id = get_hash(name);
+    shader.vertex = vertex;
+    shader.fragment = fragment;
+    shader.pipeline = create_pipeline_for_shader(*shader);
 
-    if !shader.vertex || recreate {
-        vert_info: SDL_GPUShaderCreateInfo;
-        vert_info.num_samplers = compiled.vertex_meta.num_samplers;
-        vert_info.num_storage_textures = compiled.vertex_meta.num_storage_textures;
-        vert_info.num_storage_buffers = compiled.vertex_meta.num_storage_buffers;
-        vert_info.num_uniform_buffers = compiled.vertex_meta.num_uniform_buffers;
-        vert_info.code = compiled.vertex_spirv;
-        vert_info.code_size = xx compiled.vertex_size;
-        vert_info.format = SDL_GPU_SHADERFORMAT_SPIRV;
-        vert_info.entrypoint = "vert_main";
-        vert_info.stage = .VERTEX;
-
-        frag_info: SDL_GPUShaderCreateInfo;
-        frag_info.num_samplers = compiled.fragment_meta.num_samplers;
-        frag_info.num_storage_textures = compiled.fragment_meta.num_storage_textures;
-        frag_info.num_storage_buffers = compiled.fragment_meta.num_storage_buffers;
-        frag_info.num_uniform_buffers = compiled.fragment_meta.num_uniform_buffers;
-        frag_info.code = compiled.fragment_spirv;
-        frag_info.code_size = xx compiled.fragment_size;
-        frag_info.format = SDL_GPU_SHADERFORMAT_SPIRV;
-        frag_info.entrypoint = "frag_main";
-        frag_info.stage = .FRAGMENT;
-
-        vert := SDL_CreateGPUShader(context.device, *vert_info);
-        frag := SDL_CreateGPUShader(context.device, *frag_info);
-
-        shader.vertex = vert;
-        shader.fragment = frag;
-
-        name := tprint("pipeline_%", get_shader_name(opts));
-        shader.pipeline = create_pipeline(name, opts.pipeline_options, shader);
-    }
-
-    return shader;
+    result := push_struct(*shaders_arena, shader);
+    linked_list_add(*shaders, result);
+    return result;
 }
 
-get_shader_name :: (opts: Shader_Options) -> string {
-    flags := cast(u32) opts.feature_flags;
-    return tprint("%_%_%", opts.shader_name, opts.material_name, flags);
+parse_shader :: (name: string, data: string) -> Shader_Metadata, string {
+    handler: Text_File_Handler;
+
+    start_from_memory(*handler, name, name, data);
+    if handler.failed {
+        return .{}, "";
+    }
+
+    meta: Shader_Metadata;
+    if handler.version == 1 {
+        while true {
+            line, found := consume_next_line(*handler);
+            if !found {
+                print("Failed to find end_shader_metadata in shader % metadata!", name);
+                break;
+            }
+
+            key, rhs := break_by_spaces(line);
+            if !key || equal(key, "end_shader_metadata") {
+                break;
+            }
+
+            value := break_by_spaces(rhs);
+
+            if equal(key, "pipeline_name") {
+                id, found := enum_find_name(Pipeline_Id, value);
+                if found meta.pipeline = id;
+                else print("Unknown pipeline_name % in shader % metadata!", value, name);
+            } else if equal(key, "vertex_input") {
+                meta.vertex_input = value;
+            } else if equal(key, "instance_buffer") {
+                meta.instance_buffer = value;
+            } else if equal(key, "texture_set") {
+                meta.texture_set = value;
+            } else if equal(key, "vert_constants") {
+                meta.vert_constants = value;
+            } else if equal(key, "frag_constants") {
+                meta.frag_constants = value;
+            } else {
+                print("Unknown metadata key in shader %: %!", name, key);
+            }
+        }
+    }
+
+    return meta, handler.file_data;
 }
 
-shader_arena: *Arena;
+init_shader_system :: () {
+    fallback_code :: #string HERE
+        cbuffer Constant_Buffer : register(b0, space1) {
+	       float4x4 view;
+	       float4x4 projection;
+        };
+
+        struct Instance_Data {
+	       float4x4 transform;
+	    };
+
+        StructuredBuffer<Instance_Data> instance_buffer: register(t0, space0);
+
+        float4 vert_main(float3 position: POSITION, int instance_id: SV_InstanceID): SV_Position {
+        	Instance_Data instance = instance_buffer[instance_id];
+        	float4x4 local_to_clip = mul(instance.transform, mul(view, projection));
+            return mul(float4(position, 1), local_to_clip);
+        }
+
+        float4 frag_main(): SV_Target {
+            return float4(1, 0, 0, 1);
+        }
+    HERE;
+
+    fallback_vertex := create_sdl_shader("fallback", fallback_code, .VERTEX, "vert_main");
+    fallback_fragment := create_sdl_shader("fallback", fallback_code, .FRAGMENT, "frag_main");
+
+    fallback_shader = push_struct(*shaders_arena, Shader);
+    fallback_shader.name = "fallback";
+    fallback_shader.meta = .{};
+    fallback_shader.id = get_hash(fallback_shader.name);
+    fallback_shader.vertex = fallback_vertex;
+    fallback_shader.fragment = fallback_fragment;
+    fallback_shader.pipeline = create_pipeline_for_shader(fallback_shader);
+}
 
 #scope_file
 
-shaders: Bucket_Array(Shader);
-
 fallback_shader: *Shader;
 
-Shader_Header :: struct {
-    hash: u32;
-    vertex_size: int;
-    fragment_size: int;
-    vertex_meta: SDL_ShaderCross_GraphicsShaderMetadata;
-    fragment_meta: SDL_ShaderCross_GraphicsShaderMetadata;
+shaders: Linked_List(Shader);
+shaders_arena: Arena;
+
+Shader_Stage :: enum {
+    VERTEX;
+    FRAGMENT;
 }
 
-Compiled_Shader :: struct {
-    using header: Shader_Header;
+create_sdl_shader :: (name: string, code: string, stage: Shader_Stage, entry_point: string) -> *SDL_GPUShader {
+    sdl_shadercross_stage :: SDL_ShaderCross_ShaderStage.[
+        .SDL_SHADERCROSS_SHADERSTAGE_VERTEX,
+        .SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT
+    ];
 
-    vertex_spirv: *u8;
-    fragment_spirv: *u8;
-}
+    sdl_shader_stage :: SDL_GPUShaderStage.[
+        .SDL_GPU_SHADERSTAGE_VERTEX,
+        .SDL_GPU_SHADERSTAGE_FRAGMENT
+    ];
 
-read_compiled_shader :: (opts: Shader_Options) -> Compiled_Shader, bool {
-    path := get_compiled_shader_path(opts);
-    data, ok := read_entire_file(path,, temp);
-    if !ok return .{}, false;
+    shader_name := tcs(tprint("%_%", name, string.["vertex", "fragment"][stage]));
 
-    compiled: Compiled_Shader;
-    compiled.header = cast(*Shader_Header) data.data;
-    compiled.vertex_spirv = data.data + size_of(Shader_Header);
-    compiled.fragment_spirv = compiled.vertex_spirv + compiled.vertex_size;
+    compile_info: SDL_ShaderCross_HLSL_Info;
+    compile_info.source = tcs(code);
+    compile_info.entrypoint = tcs(entry_point);
+    compile_info.shader_stage = sdl_shadercross_stage[stage];
+    compile_info.name = shader_name;
+    compile_info.include_dir = "shaders/";
 
-    return compiled, true;
-}
+    spirv_size: u64;
+    meta: SDL_ShaderCross_GraphicsShaderMetadata;
+    spirv := SDL_ShaderCross_CompileSPIRVFromHLSL(*compile_info, *spirv_size);
+    if spirv_size > 0 {
+        SDL_ShaderCross_ReflectGraphicsSPIRV(spirv, spirv_size, *meta);
 
-shader_needs_recompile :: (opts: Shader_Options) -> bool {
-    compiled_path := get_compiled_shader_path(opts);
-    if !file_exists(compiled_path) return true;
+        props := SDL_CreateProperties();
+        SDL_SetStringProperty(props, SDL_PROP_GPU_SHADER_CREATE_NAME_STRING, shader_name);
 
-    compiled_hash: u32;
-    compiled := file_open(compiled_path);
-    file_read(*compiled, *compiled_hash, size_of(u32));
-    file_close(*compiled);
+        create_info: SDL_GPUShaderCreateInfo;
+        create_info.code_size = spirv_size;
+        create_info.code = spirv;
+        create_info.entrypoint = tcs(entry_point);
+        create_info.format = SDL_GPU_SHADERFORMAT_SPIRV;
+        create_info.stage = sdl_shader_stage[stage];
+        create_info.num_samplers = meta.num_samplers;
+        create_info.num_storage_textures = meta.num_storage_textures;
+        create_info.num_storage_buffers = meta.num_storage_buffers;
+        create_info.num_uniform_buffers = meta.num_uniform_buffers;
+        create_info.props = props;
 
-    code, ok := get_source_code(opts);
-    if !ok return false;
-
-    if get_hash(code) == compiled_hash return false;
-
-    print("Shader % needs recompile (compiled hash = %, new hash = %\n",
-        get_shader_name(opts), compiled_hash, get_hash(code));
-
-    return true;
-}
-
-make_feature_flags_defines :: (flags: Shader_Feature_Flags) -> string {
-    new_context := context;
-    new_context.allocator = temp;
-    push_context new_context {
-        defines: [..] string;
-
-        names := enum_names(Shader_Feature_Flags);
-        values := enum_values_as_enum(Shader_Feature_Flags);
-
-        for values {
-            if flags & it {
-                array_add(*defines, names[it_index]);
-            }
-        }
-
-        builder: String_Builder;
-        for names {
-            defined := 0;
-            if flags & values[it_index] {
-                defined = 1;
-            }
-
-            print_to_builder(*builder, "#define % %\n", it, defined);
-        }
-
-        return builder_to_string(*builder);
-    }
-}
-
-make_feature_flags_name_list :: (flags: Shader_Feature_Flags) -> [] string {
-    new_context := context;
-    new_context.allocator = temp;
-    push_context new_context {
-        features: [..] string;
-
-        names := enum_names(Shader_Feature_Flags);
-        values := enum_values_as_enum(Shader_Feature_Flags);
-
-        for values {
-            if flags & it {
-                array_add(*features, names[it_index]);
-            }
-        }
-
-        return features;
-    }
-}
-
-get_source_code :: (opts: Shader_Options) -> string, bool {
-    new_context := context;
-    new_context.allocator = temp;
-    push_context new_context {
-        builder: String_Builder;
-
-        defines := make_feature_flags_defines(opts.feature_flags);
-        append(*builder, defines);
-
-        shared_source, ok := read_entire_file("shaders/shared.hlsl");
-        if ok {
-            append(*builder, shared_source);
-        }
-
-        shader_path := get_shader_path(opts);
-        shader_source:, ok = read_entire_file(shader_path);
-        if ok {
-            if opts.material_name.count > 0 {
-                material_path := get_material_path(opts);
-                material_source:, ok = read_entire_file(material_path);
-                if ok {
-                    shader_source = replace(shader_source, "// INSERT_MATERIAL_HERE", material_source);
-                }
-            }
-
-            append(*builder, shader_source);
-        }
-
-        full_source := builder_to_string(*builder);
-
-        name := get_shader_name(opts);
-        write_entire_file(tprint("shaders/%.debug_dump", name), full_source);
-
-        return full_source, true;
-    }
-}
-
-compile_shader :: (opts: Shader_Options) -> bool {
-    source_code, ok := get_source_code(opts);
-    if !ok return false;
-
-    base_path :: "shaders/";
-
-    name := get_shader_name(opts);
-
-    vert_info: SDL_ShaderCross_HLSL_Info;
-    vert_info.source = tcs(source_code);
-    vert_info.entrypoint = "vert_main";
-    vert_info.shader_stage = .SDL_SHADERCROSS_SHADERSTAGE_VERTEX;
-    vert_info.name = tcs(tprint("%_vertex", name));
-    vert_info.include_dir = tcs(base_path);
-
-    vert_size: u64;
-    vert_meta: SDL_ShaderCross_GraphicsShaderMetadata;
-    vert := SDL_ShaderCross_CompileSPIRVFromHLSL(*vert_info, *vert_size);
-    defer SDL_free(vert);
-
-    if !vert_size {
-        vert = null;
-        return false;
+        shader := SDL_CreateGPUShader(context.device, *create_info);
+        SDL_free(spirv);
+        return shader;
     }
 
-    SDL_ShaderCross_ReflectGraphicsSPIRV(vert, vert_size, *vert_meta);
+    return null;
+}
 
-    frag_info: SDL_ShaderCross_HLSL_Info;
-    frag_info.source = tcs(source_code);
-    frag_info.entrypoint = "frag_main";
-    frag_info.shader_stage = .SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT;
-    frag_info.name = tcs(tprint("%_fragment", name));
-    frag_info.include_dir = tcs(base_path);
+generate_hlsl_inputs :: (meta: Shader_Metadata) -> string {
+    builder: String_Builder;
 
-    frag_size: u64;
-    frag_meta: SDL_ShaderCross_GraphicsShaderMetadata;
-    frag := SDL_ShaderCross_CompileSPIRVFromHLSL(*frag_info, *frag_size);
-    defer SDL_free(frag);
+    append(*builder, "struct Vertex_Input {\n");
+    append(*builder, find_generated_struct_members("Vertex_Input", meta.vertex_input));
+    append(*builder, "};\n");
 
-    if !frag_size {
-        frag = null;
-        return false;
+    if meta.instance_buffer {
+        append(*builder, "struct Instance_Data {\n");
+        append(*builder, find_generated_struct_members("Instance_Buffer", meta.instance_buffer));
+        append(*builder, "};\n");
+        append(*builder, "StructuredBuffer<Instance_Data> instance_buffer: register(t0, space0);\n");
     }
 
-    SDL_ShaderCross_ReflectGraphicsSPIRV(frag, frag_size, *frag_meta);
-
-    compiled: Compiled_Shader;
-    compiled.hash = get_hash(source_code);
-    compiled.vertex_size = xx vert_size;
-    compiled.fragment_size = xx frag_size;
-    compiled.vertex_meta = vert_meta;
-    compiled.fragment_meta = frag_meta;
-    compiled.vertex_spirv = vert;
-    compiled.fragment_spirv = frag;
-
-    dest := get_compiled_shader_path(opts);
-    compiled_file := file_open(dest, true);
-    file_write(*compiled_file, *compiled.header, size_of(Shader_Header));
-    file_write(*compiled_file, vert, cast (int) vert_size);
-    file_write(*compiled_file, frag, cast (int) frag_size);
-    file_close(*compiled_file);
-
-    return true;
-}
-
-get_compiled_shader_path :: (opts: Shader_Options) -> string {
-    name := get_shader_name(opts);
-    return tprint("shaders/%.compiled_shader", name);
-}
-
-get_material_path :: (opts: Shader_Options) -> string {
-    return tprint("shaders/%.material", opts.material_name);
-}
-
-get_shader_path :: (opts: Shader_Options) -> string {
-    return tprint("shaders/%.shader", opts.shader_name);
-}
-
-shader_watcher: File_Watcher();
-
-reload_shader :: (shader: *Shader) {
-    SDL_ReleaseGPUShader(context.device, shader.vertex);
-    SDL_ReleaseGPUShader(context.device, shader.fragment);
-    shader.vertex = null;
-    shader.fragment = null;
-
-    reloaded := load_shader(shader.opts);
-    recreate_pipeline(shader.pipeline, reloaded);
-
-    features := make_feature_flags_name_list(shader.feature_flags);
-    print("Hotloaded shader % % %\n", shader.shader_name, shader.material_name, features);
-}
-
-shader_hotload_callback :: (watcher: *File_Watcher(), change: *File_Change, user_data: *void) {
-    path, base, ext := path_decomp(change.full_path);
-
-    if equal(ext, "shader") || equal(ext, "material") || equal(ext, "hlsl") {
-        for * shaders {
-            reload_shader(it);
-        }
+    if meta.vert_constants {
+        append(*builder, "cbuffer Constant_Buffer : register(b0, space1) {\n");
+        append(*builder, find_generated_struct_members("Constant_Buffer", meta.vert_constants));
+        append(*builder, "};\n");
     }
+
+    if meta.frag_constants {
+        append(*builder, "cbuffer Constant_Buffer : register(b0, space3) {\n");
+        append(*builder, find_generated_struct_members("Constant_Buffer", meta.frag_constants));
+        append(*builder, "};\n");
+    }
+
+    if meta.texture_set {
+        append(*builder, find_generated_struct_members("Texture_Set", meta.texture_set));
+    }
+
+    return builder_to_string(*builder);
 }

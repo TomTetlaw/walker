@@ -1066,6 +1066,8 @@ SDL_HINT_VIDEO_WAYLAND_SCALE_TO_DISPLAY :: "SDL_VIDEO_WAYLAND_SCALE_TO_DISPLAY";
 
 SDL_HINT_VIDEO_WIN_D3DCOMPILER :: "SDL_VIDEO_WIN_D3DCOMPILER";
 
+SDL_HINT_VIDEO_X11_EXTERNAL_WINDOW_INPUT :: "SDL_VIDEO_X11_EXTERNAL_WINDOW_INPUT";
+
 SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR :: "SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR";
 
 SDL_HINT_VIDEO_X11_NET_WM_PING :: "SDL_VIDEO_X11_NET_WM_PING";
@@ -1306,7 +1308,7 @@ SDL_MAJOR_VERSION :: 3;
 
 SDL_MINOR_VERSION :: 2;
 
-SDL_MICRO_VERSION :: 8;
+SDL_MICRO_VERSION :: 10;
 
 SDL_SHADERCROSS_MAJOR_VERSION :: 3;
 SDL_SHADERCROSS_MINOR_VERSION :: 0;
@@ -1413,8 +1415,11 @@ SDL_DUMMY_ENUM :: enum s32 {
 *
 * If `size` is 0, it will be set to 1.
 *
-* If you want to allocate memory aligned to a specific alignment, consider
-* using SDL_aligned_alloc().
+* If the allocation is successful, the returned pointer is guaranteed to be
+* aligned to either the *fundamental alignment* (`alignof(max_align_t)` in
+* C11 and later) or `2 * sizeof(void *)`, whichever is smaller. Use
+* SDL_aligned_alloc() if you need to allocate memory aligned to an alignment
+* greater than this guarantee.
 *
 * \param size the size to allocate.
 * \returns a pointer to the allocated memory, or NULL if allocation failed.
@@ -1436,6 +1441,10 @@ SDL_malloc :: (size: u64) -> *void #foreign sdl3;
 * The memory returned by this function must be freed with SDL_free().
 *
 * If either of `nmemb` or `size` is 0, they will both be set to 1.
+*
+* If the allocation is successful, the returned pointer is guaranteed to be
+* aligned to either the *fundamental alignment* (`alignof(max_align_t)` in
+* C11 and later) or `2 * sizeof(void *)`, whichever is smaller.
 *
 * \param nmemb the number of elements in the array.
 * \param size the size of each element of the array.
@@ -1470,6 +1479,11 @@ SDL_calloc :: (nmemb: u64, size: u64) -> *void #foreign sdl3;
 *   and cannot be dereferenced anymore.
 * - If it returns NULL (indicating failure), then `mem` will remain valid and
 *   must still be freed with SDL_free().
+*
+* If the allocation is successfully resized, the returned pointer is
+* guaranteed to be aligned to either the *fundamental alignment*
+* (`alignof(max_align_t)` in C11 and later) or `2 * sizeof(void *)`,
+* whichever is smaller.
 *
 * \param mem a pointer to allocated memory to reallocate, or NULL.
 * \param size the new size of the memory.
@@ -10849,7 +10863,7 @@ SDL_AudioStreamCallback :: #type (userdata: *void, stream: *SDL_AudioStream, add
 * audio to the stream during this call; if needed, the request that triggered
 * this callback will obtain the new data immediately.
 *
-* The callback's `approx_request` argument is roughly how many bytes of
+* The callback's `additional_amount` argument is roughly how many bytes of
 * _unconverted_ data (in the stream's input format) is needed by the caller,
 * although this may overestimate a little for safety. This takes into account
 * how much is already in the stream and only asks for any extra necessary to
@@ -10894,13 +10908,13 @@ SDL_SetAudioStreamGetCallback :: (stream: *SDL_AudioStream, callback: SDL_AudioS
 * The callback can (optionally) call SDL_GetAudioStreamData() to obtain audio
 * from the stream during this call.
 *
-* The callback's `approx_request` argument is how many bytes of _converted_
-* data (in the stream's output format) was provided by the caller, although
-* this may underestimate a little for safety. This value might be less than
-* what is currently available in the stream, if data was already there, and
-* might be less than the caller provided if the stream needs to keep a buffer
-* to aid in resampling. Which means the callback may be provided with zero
-* bytes, and a different amount on each call.
+* The callback's `additional_amount` argument is how many bytes of
+* _converted_ data (in the stream's output format) was provided by the
+* caller, although this may underestimate a little for safety. This value
+* might be less than what is currently available in the stream, if data was
+* already there, and might be less than the caller provided if the stream
+* needs to keep a buffer to aid in resampling. Which means the callback may
+* be provided with zero bytes, and a different amount on each call.
 *
 * The callback may call SDL_GetAudioStreamAvailable to see the total amount
 * currently available to read from the stream, instead of the total provided
@@ -12748,9 +12762,11 @@ SDL_SurfaceFlags :: Uint32;
 * \since This enum is available since SDL 3.2.0.
 */
 SDL_ScaleMode :: enum s32 {
+    INVALID :: -1;
     NEAREST :: 0;
     LINEAR  :: 1;
 
+    SDL_SCALEMODE_INVALID :: INVALID;
     SDL_SCALEMODE_NEAREST :: NEAREST;
     SDL_SCALEMODE_LINEAR  :: LINEAR;
 }
@@ -12822,6 +12838,8 @@ SDL_Surface :: struct {
 * \returns the new SDL_Surface structure that is created or NULL on failure;
 *          call SDL_GetError() for more information.
 *
+* \threadsafety It is safe to call this function from any thread.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_CreateSurfaceFrom
@@ -12850,6 +12868,8 @@ SDL_CreateSurface :: (width: s32, height: s32, format: SDL_PixelFormat) -> *SDL_
 * \returns the new SDL_Surface structure that is created or NULL on failure;
 *          call SDL_GetError() for more information.
 *
+* \threadsafety It is safe to call this function from any thread.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_CreateSurface
@@ -12863,6 +12883,8 @@ SDL_CreateSurfaceFrom :: (width: s32, height: s32, format: SDL_PixelFormat, pixe
 * It is safe to pass NULL to this function.
 *
 * \param surface the SDL_Surface to free.
+*
+* \threadsafety No other thread should be using the surface when it is freed.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -12899,6 +12921,8 @@ SDL_DestroySurface :: (surface: *SDL_Surface) -> void #foreign sdl3;
 * \returns a valid property ID on success or 0 on failure; call
 *          SDL_GetError() for more information.
 *
+* \threadsafety It is safe to call this function from any thread.
+*
 * \since This function is available since SDL 3.2.0.
 */
 SDL_GetSurfaceProperties :: (surface: *SDL_Surface) -> SDL_PropertiesID #foreign sdl3;
@@ -12914,6 +12938,8 @@ SDL_GetSurfaceProperties :: (surface: *SDL_Surface) -> SDL_PropertiesID #foreign
 *                   colorspace.
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -12931,6 +12957,8 @@ SDL_SetSurfaceColorspace :: (surface: *SDL_Surface, colorspace: SDL_Colorspace) 
 * \param surface the SDL_Surface structure to query.
 * \returns the colorspace used by the surface, or SDL_COLORSPACE_UNKNOWN if
 *          the surface is NULL.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -12960,6 +12988,8 @@ SDL_GetSurfaceColorspace :: (surface: *SDL_Surface) -> SDL_Colorspace #foreign s
 *          the surface didn't have an index format); call SDL_GetError() for
 *          more information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_SetPaletteColors
@@ -12976,6 +13006,8 @@ SDL_CreateSurfacePalette :: (surface: *SDL_Surface) -> *SDL_Palette #foreign sdl
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_CreatePalette
@@ -12989,6 +13021,8 @@ SDL_SetSurfacePalette :: (surface: *SDL_Surface, palette: *SDL_Palette) -> bool 
 * \param surface the SDL_Surface structure to query.
 * \returns a pointer to the palette used by the surface, or NULL if there is
 *          no palette used.
+*
+* \threadsafety It is safe to call this function from any thread.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13013,6 +13047,8 @@ SDL_GetSurfacePalette :: (surface: *SDL_Surface) -> *SDL_Palette #foreign sdl3;
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_RemoveSurfaceAlternateImages
@@ -13026,6 +13062,8 @@ SDL_AddSurfaceAlternateImage :: (surface: *SDL_Surface, image: *SDL_Surface) -> 
 *
 * \param surface the SDL_Surface structure to query.
 * \returns true if alternate versions are available or false otherwise.
+*
+* \threadsafety It is safe to call this function from any thread.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13052,6 +13090,8 @@ SDL_SurfaceHasAlternateImages :: (surface: *SDL_Surface) -> bool #foreign sdl3;
 *          failure; call SDL_GetError() for more information. This should be
 *          freed with SDL_free() when it is no longer needed.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_AddSurfaceAlternateImage
@@ -13067,6 +13107,8 @@ SDL_GetSurfaceImages :: (surface: *SDL_Surface, count: *s32) -> **SDL_Surface #f
 * destroying them if this is the last reference to them.
 *
 * \param surface the SDL_Surface structure to update.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13092,6 +13134,10 @@ SDL_RemoveSurfaceAlternateImages :: (surface: *SDL_Surface) -> void #foreign sdl
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe. The locking referred to by
+*               this function is making the pixels available for direct
+*               access, not thread-safe locking.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_MUSTLOCK
@@ -13103,6 +13149,10 @@ SDL_LockSurface :: (surface: *SDL_Surface) -> bool #foreign sdl3;
 * Release a surface after directly accessing the pixels.
 *
 * \param surface the SDL_Surface structure to be unlocked.
+*
+* \threadsafety This function is not thread safe. The locking referred to by
+*               this function is making the pixels available for direct
+*               access, not thread-safe locking.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13122,6 +13172,8 @@ SDL_UnlockSurface :: (surface: *SDL_Surface) -> void #foreign sdl3;
 * \returns a pointer to a new SDL_Surface structure or NULL on failure; call
 *          SDL_GetError() for more information.
 *
+* \threadsafety It is safe to call this function from any thread.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_DestroySurface
@@ -13139,6 +13191,8 @@ SDL_LoadBMP_IO :: (src: *SDL_IOStream, closeio: bool) -> *SDL_Surface #foreign s
 * \param file the BMP file to load.
 * \returns a pointer to a new SDL_Surface structure or NULL on failure; call
 *          SDL_GetError() for more information.
+*
+* \threadsafety It is safe to call this function from any thread.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13164,6 +13218,8 @@ SDL_LoadBMP :: (file: *u8) -> *SDL_Surface #foreign sdl3;
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_LoadBMP_IO
@@ -13185,6 +13241,8 @@ SDL_SaveBMP_IO :: (surface: *SDL_Surface, dst: *SDL_IOStream, closeio: bool) -> 
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_LoadBMP
@@ -13203,6 +13261,8 @@ SDL_SaveBMP :: (surface: *SDL_Surface, file: *u8) -> bool #foreign sdl3;
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_BlitSurface
@@ -13218,6 +13278,8 @@ SDL_SetSurfaceRLE :: (surface: *SDL_Surface, enabled: bool) -> bool #foreign sdl
 *
 * \param surface the SDL_Surface structure to query.
 * \returns true if the surface is RLE enabled, false otherwise.
+*
+* \threadsafety It is safe to call this function from any thread.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13241,6 +13303,8 @@ SDL_SurfaceHasRLE :: (surface: *SDL_Surface) -> bool #foreign sdl3;
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_GetSurfaceColorKey
@@ -13256,6 +13320,8 @@ SDL_SetSurfaceColorKey :: (surface: *SDL_Surface, enabled: bool, key: Uint32) ->
 *
 * \param surface the SDL_Surface structure to query.
 * \returns true if the surface has a color key, false otherwise.
+*
+* \threadsafety It is safe to call this function from any thread.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13276,6 +13342,8 @@ SDL_SurfaceHasColorKey :: (surface: *SDL_Surface) -> bool #foreign sdl3;
 * \param key a pointer filled in with the transparent pixel.
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
+*
+* \threadsafety It is safe to call this function from any thread.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13300,6 +13368,8 @@ SDL_GetSurfaceColorKey :: (surface: *SDL_Surface, key: *Uint32) -> bool #foreign
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_GetSurfaceColorMod
@@ -13316,6 +13386,8 @@ SDL_SetSurfaceColorMod :: (surface: *SDL_Surface, r: Uint8, g: Uint8, b: Uint8) 
 * \param b a pointer filled in with the current blue color value.
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13337,6 +13409,8 @@ SDL_GetSurfaceColorMod :: (surface: *SDL_Surface, r: *Uint8, g: *Uint8, b: *Uint
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_GetSurfaceAlphaMod
@@ -13351,6 +13425,8 @@ SDL_SetSurfaceAlphaMod :: (surface: *SDL_Surface, alpha: Uint8) -> bool #foreign
 * \param alpha a pointer filled in with the current alpha value.
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
+*
+* \threadsafety It is safe to call this function from any thread.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13371,6 +13447,8 @@ SDL_GetSurfaceAlphaMod :: (surface: *SDL_Surface, alpha: *Uint8) -> bool #foreig
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_GetSurfaceBlendMode
@@ -13384,6 +13462,8 @@ SDL_SetSurfaceBlendMode :: (surface: *SDL_Surface, blendMode: SDL_BlendMode) -> 
 * \param blendMode a pointer filled in with the current SDL_BlendMode.
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
+*
+* \threadsafety It is safe to call this function from any thread.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13406,6 +13486,8 @@ SDL_GetSurfaceBlendMode :: (surface: *SDL_Surface, blendMode: *SDL_BlendMode) ->
 * \returns true if the rectangle intersects the surface, otherwise false and
 *          blits will be completely clipped.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_GetSurfaceClipRect
@@ -13425,6 +13507,8 @@ SDL_SetSurfaceClipRect :: (surface: *SDL_Surface, rect: *SDL_Rect) -> bool #fore
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_SetSurfaceClipRect
@@ -13438,6 +13522,8 @@ SDL_GetSurfaceClipRect :: (surface: *SDL_Surface, rect: *SDL_Rect) -> bool #fore
 * \param flip the direction to flip.
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 */
@@ -13454,6 +13540,8 @@ SDL_FlipSurface :: (surface: *SDL_Surface, flip: SDL_FlipMode) -> bool #foreign 
 * \param surface the surface to duplicate.
 * \returns a copy of the surface or NULL on failure; call SDL_GetError() for
 *          more information.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13473,6 +13561,8 @@ SDL_DuplicateSurface :: (surface: *SDL_Surface) -> *SDL_Surface #foreign sdl3;
 * \param scaleMode the SDL_ScaleMode to be used.
 * \returns a copy of the surface or NULL on failure; call SDL_GetError() for
 *          more information.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13498,6 +13588,8 @@ SDL_ScaleSurface :: (surface: *SDL_Surface, width: s32, height: s32, scaleMode: 
 * \param format the new pixel format.
 * \returns the new SDL_Surface structure that is created or NULL on failure;
 *          call SDL_GetError() for more information.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13525,6 +13617,8 @@ SDL_ConvertSurface :: (surface: *SDL_Surface, format: SDL_PixelFormat) -> *SDL_S
 * \returns the new SDL_Surface structure that is created or NULL on failure;
 *          call SDL_GetError() for more information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_ConvertSurface
@@ -13545,6 +13639,10 @@ SDL_ConvertSurfaceAndColorspace :: (surface: *SDL_Surface, format: SDL_PixelForm
 * \param dst_pitch the pitch of the destination pixels, in bytes.
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
+*
+* \threadsafety The same destination pixels should not be used from two
+*               threads at once. It is safe to use the same source pixels
+*               from multiple threads.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13575,6 +13673,10 @@ SDL_ConvertPixels :: (width: s32, height: s32, src_format: SDL_PixelFormat, src:
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety The same destination pixels should not be used from two
+*               threads at once. It is safe to use the same source pixels
+*               from multiple threads.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_ConvertPixels
@@ -13599,6 +13701,10 @@ SDL_ConvertPixelsAndColorspace :: (width: s32, height: s32, src_format: SDL_Pixe
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety The same destination pixels should not be used from two
+*               threads at once. It is safe to use the same source pixels
+*               from multiple threads.
+*
 * \since This function is available since SDL 3.2.0.
 */
 SDL_PremultiplyAlpha :: (width: s32, height: s32, src_format: SDL_PixelFormat, src: *void, src_pitch: s32, dst_format: SDL_PixelFormat, dst: *void, dst_pitch: s32, linear: bool) -> bool #foreign sdl3;
@@ -13613,6 +13719,8 @@ SDL_PremultiplyAlpha :: (width: s32, height: s32, src_format: SDL_PixelFormat, s
 *               multiplication, false to do multiplication in sRGB space.
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 */
@@ -13633,6 +13741,8 @@ SDL_PremultiplySurfaceAlpha :: (surface: *SDL_Surface, linear: bool) -> bool #fo
 * \param a the alpha component of the pixel, normally in the range 0-1.
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 */
@@ -13656,6 +13766,8 @@ SDL_ClearSurface :: (surface: *SDL_Surface, r: float, g: float, b: float, a: flo
 * \param color the color to fill with.
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13681,6 +13793,8 @@ SDL_FillSurfaceRect :: (dst: *SDL_Surface, rect: *SDL_Rect, color: Uint32) -> bo
 * \param color the color to fill with.
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13755,9 +13869,8 @@ SDL_FillSurfaceRects :: (dst: *SDL_Surface, rects: *SDL_Rect, count: s32, color:
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
-* \threadsafety The same destination surface should not be used from two
-*               threads at once. It is safe to use the same source surface
-*               from multiple threads.
+* \threadsafety Only one thread should be using the `src` and `dst` surfaces
+*               at any given time.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13780,9 +13893,8 @@ SDL_BlitSurface :: (src: *SDL_Surface, srcrect: *SDL_Rect, dst: *SDL_Surface, ds
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
-* \threadsafety The same destination surface should not be used from two
-*               threads at once. It is safe to use the same source surface
-*               from multiple threads.
+* \threadsafety Only one thread should be using the `src` and `dst` surfaces
+*               at any given time.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13805,9 +13917,8 @@ SDL_BlitSurfaceUnchecked :: (src: *SDL_Surface, srcrect: *SDL_Rect, dst: *SDL_Su
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
-* \threadsafety The same destination surface should not be used from two
-*               threads at once. It is safe to use the same source surface
-*               from multiple threads.
+* \threadsafety Only one thread should be using the `src` and `dst` surfaces
+*               at any given time.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13831,9 +13942,8 @@ SDL_BlitSurfaceScaled :: (src: *SDL_Surface, srcrect: *SDL_Rect, dst: *SDL_Surfa
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
-* \threadsafety The same destination surface should not be used from two
-*               threads at once. It is safe to use the same source surface
-*               from multiple threads.
+* \threadsafety Only one thread should be using the `src` and `dst` surfaces
+*               at any given time.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13854,9 +13964,8 @@ SDL_BlitSurfaceUncheckedScaled :: (src: *SDL_Surface, srcrect: *SDL_Rect, dst: *
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
-* \threadsafety The same destination surface should not be used from two
-*               threads at once. It is safe to use the same source surface
-*               from multiple threads.
+* \threadsafety Only one thread should be using the `src` and `dst` surfaces
+*               at any given time.
 *
 * \since This function is available since SDL 3.4.0.
 *
@@ -13880,9 +13989,8 @@ SDL_StretchSurface :: (src: *SDL_Surface, srcrect: *SDL_Rect, dst: *SDL_Surface,
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
-* \threadsafety The same destination surface should not be used from two
-*               threads at once. It is safe to use the same source surface
-*               from multiple threads.
+* \threadsafety Only one thread should be using the `src` and `dst` surfaces
+*               at any given time.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13910,9 +14018,8 @@ SDL_BlitSurfaceTiled :: (src: *SDL_Surface, srcrect: *SDL_Rect, dst: *SDL_Surfac
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
-* \threadsafety The same destination surface should not be used from two
-*               threads at once. It is safe to use the same source surface
-*               from multiple threads.
+* \threadsafety Only one thread should be using the `src` and `dst` surfaces
+*               at any given time.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13947,9 +14054,8 @@ SDL_BlitSurfaceTiledWithScale :: (src: *SDL_Surface, srcrect: *SDL_Rect, scale: 
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
-* \threadsafety The same destination surface should not be used from two
-*               threads at once. It is safe to use the same source surface
-*               from multiple threads.
+* \threadsafety Only one thread should be using the `src` and `dst` surfaces
+*               at any given time.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -13980,6 +14086,8 @@ SDL_BlitSurface9Grid :: (src: *SDL_Surface, srcrect: *SDL_Rect, left_width: s32,
 * \param g the green component of the pixel in the range 0-255.
 * \param b the blue component of the pixel in the range 0-255.
 * \returns a pixel value.
+*
+* \threadsafety It is safe to call this function from any thread.
 *
 * \since This function is available since SDL 3.2.0.
 *
@@ -14012,6 +14120,8 @@ SDL_MapSurfaceRGB :: (surface: *SDL_Surface, r: Uint8, g: Uint8, b: Uint8) -> Ui
 * \param a the alpha component of the pixel in the range 0-255.
 * \returns a pixel value.
 *
+* \threadsafety It is safe to call this function from any thread.
+*
 * \since This function is available since SDL 3.2.0.
 *
 * \sa SDL_MapSurfaceRGB
@@ -14041,6 +14151,8 @@ SDL_MapSurfaceRGBA :: (surface: *SDL_Surface, r: Uint8, g: Uint8, b: Uint8, a: U
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 */
 SDL_ReadSurfacePixel :: (surface: *SDL_Surface, x: s32, y: s32, r: *Uint8, g: *Uint8, b: *Uint8, a: *Uint8) -> bool #foreign sdl3;
@@ -14065,6 +14177,8 @@ SDL_ReadSurfacePixel :: (surface: *SDL_Surface, x: s32, y: s32, r: *Uint8, g: *U
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 */
 SDL_ReadSurfacePixelFloat :: (surface: *SDL_Surface, x: s32, y: s32, r: *float, g: *float, b: *float, a: *float) -> bool #foreign sdl3;
@@ -14088,6 +14202,8 @@ SDL_ReadSurfacePixelFloat :: (surface: *SDL_Surface, x: s32, y: s32, r: *float, 
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
 *
+* \threadsafety This function is not thread safe.
+*
 * \since This function is available since SDL 3.2.0.
 */
 SDL_WriteSurfacePixel :: (surface: *SDL_Surface, x: s32, y: s32, r: Uint8, g: Uint8, b: Uint8, a: Uint8) -> bool #foreign sdl3;
@@ -14107,6 +14223,8 @@ SDL_WriteSurfacePixel :: (surface: *SDL_Surface, x: s32, y: s32, r: Uint8, g: Ui
 * \param a the alpha channel value, normally in the range 0-1.
 * \returns true on success or false on failure; call SDL_GetError() for more
 *          information.
+*
+* \threadsafety This function is not thread safe.
 *
 * \since This function is available since SDL 3.2.0.
 */
@@ -18435,6 +18553,10 @@ SDL_PowerState :: enum s32 {
 *
 * It's possible a platform can only report battery percentage or time left
 * but not both.
+*
+* On some platforms, retrieving power supply details might be expensive. If
+* you want to display continuous status you could call this function every
+* minute or so.
 *
 * \param seconds a pointer filled in with the seconds of battery life left,
 *                or NULL to ignore. This will be filled in with -1 if we
@@ -28701,7 +28823,7 @@ SDL_GPUTextureSupportsFormat :: (device: *SDL_GPUDevice, format: SDL_GPUTextureF
 * \param device a GPU context.
 * \param format the texture format to check.
 * \param sample_count the sample count to check.
-* \returns a hardware-specific version of min(preferred, possible).
+* \returns whether the sample count is supported for this texture format.
 *
 * \since This function is available since SDL 3.2.0.
 */
@@ -36294,2321 +36416,3664 @@ SDL_ShaderCross_CompileComputePipelineFromHLSL :: (device: *SDL_GPUDevice, info:
 
 #import "Basic"; // For assert, push_context
 
-sdl3 :: #library "windows/SDL3-3.2.8/lib/x64/SDL3";
+sdl3 :: #library "windows/SDL3-3.2.10/lib/x64/SDL3";
 sdl3_shadercross :: #library "windows/SDL3_shadercross-3.0.0-windows-VC-x64/lib/SDL3_shadercross";
 
 #run {
     {
-        instance: _iobuf;
-        assert(((cast(*void)(*instance._Placeholder)) - cast(*void)(*instance)) == 0, "_iobuf._Placeholder has unexpected offset % instead of 0", ((cast(*void)(*instance._Placeholder)) - cast(*void)(*instance)));
-        assert(size_of(type_of(_iobuf._Placeholder)) == 8, "_iobuf._Placeholder has unexpected size % instead of 8", size_of(type_of(_iobuf._Placeholder)));
+        info := type_info(_iobuf);
+        for info.members {
+            if it.name == {
+                case "_Placeholder";
+                    assert(it.offset_in_bytes == 0, "_iobuf._Placeholder has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "_iobuf._Placeholder has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(_iobuf) == 8, "_iobuf has size % instead of 8", size_of(_iobuf));
     }
 
     {
-        instance: SDL_alignment_test;
-        assert(((cast(*void)(*instance.a)) - cast(*void)(*instance)) == 0, "SDL_alignment_test.a has unexpected offset % instead of 0", ((cast(*void)(*instance.a)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_alignment_test.a)) == 1, "SDL_alignment_test.a has unexpected size % instead of 1", size_of(type_of(SDL_alignment_test.a)));
-        assert(((cast(*void)(*instance.b)) - cast(*void)(*instance)) == 8, "SDL_alignment_test.b has unexpected offset % instead of 8", ((cast(*void)(*instance.b)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_alignment_test.b)) == 8, "SDL_alignment_test.b has unexpected size % instead of 8", size_of(type_of(SDL_alignment_test.b)));
+        info := type_info(SDL_alignment_test);
+        for info.members {
+            if it.name == {
+                case "a";
+                    assert(it.offset_in_bytes == 0, "SDL_alignment_test.a has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_alignment_test.a has unexpected size % instead of 1", it.type.runtime_size);
+                case "b";
+                    assert(it.offset_in_bytes == 8, "SDL_alignment_test.b has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_alignment_test.b has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_alignment_test) == 16, "SDL_alignment_test has size % instead of 16", size_of(SDL_alignment_test));
     }
 
     {
-        instance: SDL_AssertData;
-        assert(((cast(*void)(*instance.always_ignore)) - cast(*void)(*instance)) == 0, "SDL_AssertData.always_ignore has unexpected offset % instead of 0", ((cast(*void)(*instance.always_ignore)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AssertData.always_ignore)) == 1, "SDL_AssertData.always_ignore has unexpected size % instead of 1", size_of(type_of(SDL_AssertData.always_ignore)));
-        assert(((cast(*void)(*instance.trigger_count)) - cast(*void)(*instance)) == 4, "SDL_AssertData.trigger_count has unexpected offset % instead of 4", ((cast(*void)(*instance.trigger_count)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AssertData.trigger_count)) == 4, "SDL_AssertData.trigger_count has unexpected size % instead of 4", size_of(type_of(SDL_AssertData.trigger_count)));
-        assert(((cast(*void)(*instance.condition)) - cast(*void)(*instance)) == 8, "SDL_AssertData.condition has unexpected offset % instead of 8", ((cast(*void)(*instance.condition)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AssertData.condition)) == 8, "SDL_AssertData.condition has unexpected size % instead of 8", size_of(type_of(SDL_AssertData.condition)));
-        assert(((cast(*void)(*instance.filename)) - cast(*void)(*instance)) == 16, "SDL_AssertData.filename has unexpected offset % instead of 16", ((cast(*void)(*instance.filename)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AssertData.filename)) == 8, "SDL_AssertData.filename has unexpected size % instead of 8", size_of(type_of(SDL_AssertData.filename)));
-        assert(((cast(*void)(*instance.linenum)) - cast(*void)(*instance)) == 24, "SDL_AssertData.linenum has unexpected offset % instead of 24", ((cast(*void)(*instance.linenum)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AssertData.linenum)) == 4, "SDL_AssertData.linenum has unexpected size % instead of 4", size_of(type_of(SDL_AssertData.linenum)));
-        assert(((cast(*void)(*instance.function)) - cast(*void)(*instance)) == 32, "SDL_AssertData.function has unexpected offset % instead of 32", ((cast(*void)(*instance.function)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AssertData.function)) == 8, "SDL_AssertData.function has unexpected size % instead of 8", size_of(type_of(SDL_AssertData.function)));
-        assert(((cast(*void)(*instance.next)) - cast(*void)(*instance)) == 40, "SDL_AssertData.next has unexpected offset % instead of 40", ((cast(*void)(*instance.next)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AssertData.next)) == 8, "SDL_AssertData.next has unexpected size % instead of 8", size_of(type_of(SDL_AssertData.next)));
+        info := type_info(SDL_AssertData);
+        for info.members {
+            if it.name == {
+                case "always_ignore";
+                    assert(it.offset_in_bytes == 0, "SDL_AssertData.always_ignore has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_AssertData.always_ignore has unexpected size % instead of 1", it.type.runtime_size);
+                case "trigger_count";
+                    assert(it.offset_in_bytes == 4, "SDL_AssertData.trigger_count has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_AssertData.trigger_count has unexpected size % instead of 4", it.type.runtime_size);
+                case "condition";
+                    assert(it.offset_in_bytes == 8, "SDL_AssertData.condition has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_AssertData.condition has unexpected size % instead of 8", it.type.runtime_size);
+                case "filename";
+                    assert(it.offset_in_bytes == 16, "SDL_AssertData.filename has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_AssertData.filename has unexpected size % instead of 8", it.type.runtime_size);
+                case "linenum";
+                    assert(it.offset_in_bytes == 24, "SDL_AssertData.linenum has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_AssertData.linenum has unexpected size % instead of 4", it.type.runtime_size);
+                case "function";
+                    assert(it.offset_in_bytes == 32, "SDL_AssertData.function has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_AssertData.function has unexpected size % instead of 8", it.type.runtime_size);
+                case "next";
+                    assert(it.offset_in_bytes == 40, "SDL_AssertData.next has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_AssertData.next has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_AssertData) == 48, "SDL_AssertData has size % instead of 48", size_of(SDL_AssertData));
     }
 
     {
-        instance: SDL_AsyncIOOutcome;
-        assert(((cast(*void)(*instance.asyncio)) - cast(*void)(*instance)) == 0, "SDL_AsyncIOOutcome.asyncio has unexpected offset % instead of 0", ((cast(*void)(*instance.asyncio)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AsyncIOOutcome.asyncio)) == 8, "SDL_AsyncIOOutcome.asyncio has unexpected size % instead of 8", size_of(type_of(SDL_AsyncIOOutcome.asyncio)));
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 8, "SDL_AsyncIOOutcome.type has unexpected offset % instead of 8", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AsyncIOOutcome.type)) == 4, "SDL_AsyncIOOutcome.type has unexpected size % instead of 4", size_of(type_of(SDL_AsyncIOOutcome.type)));
-        assert(((cast(*void)(*instance.result)) - cast(*void)(*instance)) == 12, "SDL_AsyncIOOutcome.result has unexpected offset % instead of 12", ((cast(*void)(*instance.result)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AsyncIOOutcome.result)) == 4, "SDL_AsyncIOOutcome.result has unexpected size % instead of 4", size_of(type_of(SDL_AsyncIOOutcome.result)));
-        assert(((cast(*void)(*instance.buffer)) - cast(*void)(*instance)) == 16, "SDL_AsyncIOOutcome.buffer has unexpected offset % instead of 16", ((cast(*void)(*instance.buffer)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AsyncIOOutcome.buffer)) == 8, "SDL_AsyncIOOutcome.buffer has unexpected size % instead of 8", size_of(type_of(SDL_AsyncIOOutcome.buffer)));
-        assert(((cast(*void)(*instance.offset)) - cast(*void)(*instance)) == 24, "SDL_AsyncIOOutcome.offset has unexpected offset % instead of 24", ((cast(*void)(*instance.offset)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AsyncIOOutcome.offset)) == 8, "SDL_AsyncIOOutcome.offset has unexpected size % instead of 8", size_of(type_of(SDL_AsyncIOOutcome.offset)));
-        assert(((cast(*void)(*instance.bytes_requested)) - cast(*void)(*instance)) == 32, "SDL_AsyncIOOutcome.bytes_requested has unexpected offset % instead of 32", ((cast(*void)(*instance.bytes_requested)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AsyncIOOutcome.bytes_requested)) == 8, "SDL_AsyncIOOutcome.bytes_requested has unexpected size % instead of 8", size_of(type_of(SDL_AsyncIOOutcome.bytes_requested)));
-        assert(((cast(*void)(*instance.bytes_transferred)) - cast(*void)(*instance)) == 40, "SDL_AsyncIOOutcome.bytes_transferred has unexpected offset % instead of 40", ((cast(*void)(*instance.bytes_transferred)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AsyncIOOutcome.bytes_transferred)) == 8, "SDL_AsyncIOOutcome.bytes_transferred has unexpected size % instead of 8", size_of(type_of(SDL_AsyncIOOutcome.bytes_transferred)));
-        assert(((cast(*void)(*instance.userdata)) - cast(*void)(*instance)) == 48, "SDL_AsyncIOOutcome.userdata has unexpected offset % instead of 48", ((cast(*void)(*instance.userdata)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AsyncIOOutcome.userdata)) == 8, "SDL_AsyncIOOutcome.userdata has unexpected size % instead of 8", size_of(type_of(SDL_AsyncIOOutcome.userdata)));
+        info := type_info(SDL_AsyncIOOutcome);
+        for info.members {
+            if it.name == {
+                case "asyncio";
+                    assert(it.offset_in_bytes == 0, "SDL_AsyncIOOutcome.asyncio has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_AsyncIOOutcome.asyncio has unexpected size % instead of 8", it.type.runtime_size);
+                case "type";
+                    assert(it.offset_in_bytes == 8, "SDL_AsyncIOOutcome.type has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_AsyncIOOutcome.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "result";
+                    assert(it.offset_in_bytes == 12, "SDL_AsyncIOOutcome.result has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_AsyncIOOutcome.result has unexpected size % instead of 4", it.type.runtime_size);
+                case "buffer";
+                    assert(it.offset_in_bytes == 16, "SDL_AsyncIOOutcome.buffer has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_AsyncIOOutcome.buffer has unexpected size % instead of 8", it.type.runtime_size);
+                case "offset";
+                    assert(it.offset_in_bytes == 24, "SDL_AsyncIOOutcome.offset has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_AsyncIOOutcome.offset has unexpected size % instead of 8", it.type.runtime_size);
+                case "bytes_requested";
+                    assert(it.offset_in_bytes == 32, "SDL_AsyncIOOutcome.bytes_requested has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_AsyncIOOutcome.bytes_requested has unexpected size % instead of 8", it.type.runtime_size);
+                case "bytes_transferred";
+                    assert(it.offset_in_bytes == 40, "SDL_AsyncIOOutcome.bytes_transferred has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_AsyncIOOutcome.bytes_transferred has unexpected size % instead of 8", it.type.runtime_size);
+                case "userdata";
+                    assert(it.offset_in_bytes == 48, "SDL_AsyncIOOutcome.userdata has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_AsyncIOOutcome.userdata has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_AsyncIOOutcome) == 56, "SDL_AsyncIOOutcome has size % instead of 56", size_of(SDL_AsyncIOOutcome));
     }
 
     {
-        instance: SDL_AtomicInt;
-        assert(((cast(*void)(*instance.value)) - cast(*void)(*instance)) == 0, "SDL_AtomicInt.value has unexpected offset % instead of 0", ((cast(*void)(*instance.value)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AtomicInt.value)) == 4, "SDL_AtomicInt.value has unexpected size % instead of 4", size_of(type_of(SDL_AtomicInt.value)));
+        info := type_info(SDL_AtomicInt);
+        for info.members {
+            if it.name == {
+                case "value";
+                    assert(it.offset_in_bytes == 0, "SDL_AtomicInt.value has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_AtomicInt.value has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_AtomicInt) == 4, "SDL_AtomicInt has size % instead of 4", size_of(SDL_AtomicInt));
     }
 
     {
-        instance: SDL_AtomicU32;
-        assert(((cast(*void)(*instance.value)) - cast(*void)(*instance)) == 0, "SDL_AtomicU32.value has unexpected offset % instead of 0", ((cast(*void)(*instance.value)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AtomicU32.value)) == 4, "SDL_AtomicU32.value has unexpected size % instead of 4", size_of(type_of(SDL_AtomicU32.value)));
+        info := type_info(SDL_AtomicU32);
+        for info.members {
+            if it.name == {
+                case "value";
+                    assert(it.offset_in_bytes == 0, "SDL_AtomicU32.value has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_AtomicU32.value has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_AtomicU32) == 4, "SDL_AtomicU32 has size % instead of 4", size_of(SDL_AtomicU32));
     }
 
     {
-        instance: SDL_InitState;
-        assert(((cast(*void)(*instance.status)) - cast(*void)(*instance)) == 0, "SDL_InitState.status has unexpected offset % instead of 0", ((cast(*void)(*instance.status)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_InitState.status)) == 4, "SDL_InitState.status has unexpected size % instead of 4", size_of(type_of(SDL_InitState.status)));
-        assert(((cast(*void)(*instance.thread)) - cast(*void)(*instance)) == 8, "SDL_InitState.thread has unexpected offset % instead of 8", ((cast(*void)(*instance.thread)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_InitState.thread)) == 8, "SDL_InitState.thread has unexpected size % instead of 8", size_of(type_of(SDL_InitState.thread)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 16, "SDL_InitState.reserved has unexpected offset % instead of 16", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_InitState.reserved)) == 8, "SDL_InitState.reserved has unexpected size % instead of 8", size_of(type_of(SDL_InitState.reserved)));
+        info := type_info(SDL_InitState);
+        for info.members {
+            if it.name == {
+                case "status";
+                    assert(it.offset_in_bytes == 0, "SDL_InitState.status has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_InitState.status has unexpected size % instead of 4", it.type.runtime_size);
+                case "thread";
+                    assert(it.offset_in_bytes == 8, "SDL_InitState.thread has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_InitState.thread has unexpected size % instead of 8", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 16, "SDL_InitState.reserved has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_InitState.reserved has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_InitState) == 24, "SDL_InitState has size % instead of 24", size_of(SDL_InitState));
     }
 
     {
-        instance: SDL_IOStreamInterface;
-        assert(((cast(*void)(*instance.version)) - cast(*void)(*instance)) == 0, "SDL_IOStreamInterface.version has unexpected offset % instead of 0", ((cast(*void)(*instance.version)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_IOStreamInterface.version)) == 4, "SDL_IOStreamInterface.version has unexpected size % instead of 4", size_of(type_of(SDL_IOStreamInterface.version)));
-        assert(((cast(*void)(*instance.size)) - cast(*void)(*instance)) == 8, "SDL_IOStreamInterface.size has unexpected offset % instead of 8", ((cast(*void)(*instance.size)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_IOStreamInterface.size)) == 8, "SDL_IOStreamInterface.size has unexpected size % instead of 8", size_of(type_of(SDL_IOStreamInterface.size)));
-        assert(((cast(*void)(*instance.seek)) - cast(*void)(*instance)) == 16, "SDL_IOStreamInterface.seek has unexpected offset % instead of 16", ((cast(*void)(*instance.seek)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_IOStreamInterface.seek)) == 8, "SDL_IOStreamInterface.seek has unexpected size % instead of 8", size_of(type_of(SDL_IOStreamInterface.seek)));
-        assert(((cast(*void)(*instance.read)) - cast(*void)(*instance)) == 24, "SDL_IOStreamInterface.read has unexpected offset % instead of 24", ((cast(*void)(*instance.read)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_IOStreamInterface.read)) == 8, "SDL_IOStreamInterface.read has unexpected size % instead of 8", size_of(type_of(SDL_IOStreamInterface.read)));
-        assert(((cast(*void)(*instance.write)) - cast(*void)(*instance)) == 32, "SDL_IOStreamInterface.write has unexpected offset % instead of 32", ((cast(*void)(*instance.write)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_IOStreamInterface.write)) == 8, "SDL_IOStreamInterface.write has unexpected size % instead of 8", size_of(type_of(SDL_IOStreamInterface.write)));
-        assert(((cast(*void)(*instance.flush)) - cast(*void)(*instance)) == 40, "SDL_IOStreamInterface.flush has unexpected offset % instead of 40", ((cast(*void)(*instance.flush)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_IOStreamInterface.flush)) == 8, "SDL_IOStreamInterface.flush has unexpected size % instead of 8", size_of(type_of(SDL_IOStreamInterface.flush)));
-        assert(((cast(*void)(*instance.close)) - cast(*void)(*instance)) == 48, "SDL_IOStreamInterface.close has unexpected offset % instead of 48", ((cast(*void)(*instance.close)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_IOStreamInterface.close)) == 8, "SDL_IOStreamInterface.close has unexpected size % instead of 8", size_of(type_of(SDL_IOStreamInterface.close)));
+        info := type_info(SDL_IOStreamInterface);
+        for info.members {
+            if it.name == {
+                case "version";
+                    assert(it.offset_in_bytes == 0, "SDL_IOStreamInterface.version has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_IOStreamInterface.version has unexpected size % instead of 4", it.type.runtime_size);
+                case "size";
+                    assert(it.offset_in_bytes == 8, "SDL_IOStreamInterface.size has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_IOStreamInterface.size has unexpected size % instead of 8", it.type.runtime_size);
+                case "seek";
+                    assert(it.offset_in_bytes == 16, "SDL_IOStreamInterface.seek has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_IOStreamInterface.seek has unexpected size % instead of 8", it.type.runtime_size);
+                case "read";
+                    assert(it.offset_in_bytes == 24, "SDL_IOStreamInterface.read has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_IOStreamInterface.read has unexpected size % instead of 8", it.type.runtime_size);
+                case "write";
+                    assert(it.offset_in_bytes == 32, "SDL_IOStreamInterface.write has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_IOStreamInterface.write has unexpected size % instead of 8", it.type.runtime_size);
+                case "flush";
+                    assert(it.offset_in_bytes == 40, "SDL_IOStreamInterface.flush has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_IOStreamInterface.flush has unexpected size % instead of 8", it.type.runtime_size);
+                case "close";
+                    assert(it.offset_in_bytes == 48, "SDL_IOStreamInterface.close has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_IOStreamInterface.close has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_IOStreamInterface) == 56, "SDL_IOStreamInterface has size % instead of 56", size_of(SDL_IOStreamInterface));
     }
 
     {
-        instance: SDL_AudioSpec;
-        assert(((cast(*void)(*instance.format)) - cast(*void)(*instance)) == 0, "SDL_AudioSpec.format has unexpected offset % instead of 0", ((cast(*void)(*instance.format)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AudioSpec.format)) == 4, "SDL_AudioSpec.format has unexpected size % instead of 4", size_of(type_of(SDL_AudioSpec.format)));
-        assert(((cast(*void)(*instance.channels)) - cast(*void)(*instance)) == 4, "SDL_AudioSpec.channels has unexpected offset % instead of 4", ((cast(*void)(*instance.channels)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AudioSpec.channels)) == 4, "SDL_AudioSpec.channels has unexpected size % instead of 4", size_of(type_of(SDL_AudioSpec.channels)));
-        assert(((cast(*void)(*instance.freq)) - cast(*void)(*instance)) == 8, "SDL_AudioSpec.freq has unexpected offset % instead of 8", ((cast(*void)(*instance.freq)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AudioSpec.freq)) == 4, "SDL_AudioSpec.freq has unexpected size % instead of 4", size_of(type_of(SDL_AudioSpec.freq)));
+        info := type_info(SDL_AudioSpec);
+        for info.members {
+            if it.name == {
+                case "format";
+                    assert(it.offset_in_bytes == 0, "SDL_AudioSpec.format has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_AudioSpec.format has unexpected size % instead of 4", it.type.runtime_size);
+                case "channels";
+                    assert(it.offset_in_bytes == 4, "SDL_AudioSpec.channels has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_AudioSpec.channels has unexpected size % instead of 4", it.type.runtime_size);
+                case "freq";
+                    assert(it.offset_in_bytes == 8, "SDL_AudioSpec.freq has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_AudioSpec.freq has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_AudioSpec) == 12, "SDL_AudioSpec has size % instead of 12", size_of(SDL_AudioSpec));
     }
 
     {
-        instance: SDL_Color;
-        assert(((cast(*void)(*instance.r)) - cast(*void)(*instance)) == 0, "SDL_Color.r has unexpected offset % instead of 0", ((cast(*void)(*instance.r)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Color.r)) == 1, "SDL_Color.r has unexpected size % instead of 1", size_of(type_of(SDL_Color.r)));
-        assert(((cast(*void)(*instance.g)) - cast(*void)(*instance)) == 1, "SDL_Color.g has unexpected offset % instead of 1", ((cast(*void)(*instance.g)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Color.g)) == 1, "SDL_Color.g has unexpected size % instead of 1", size_of(type_of(SDL_Color.g)));
-        assert(((cast(*void)(*instance.b)) - cast(*void)(*instance)) == 2, "SDL_Color.b has unexpected offset % instead of 2", ((cast(*void)(*instance.b)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Color.b)) == 1, "SDL_Color.b has unexpected size % instead of 1", size_of(type_of(SDL_Color.b)));
-        assert(((cast(*void)(*instance.a)) - cast(*void)(*instance)) == 3, "SDL_Color.a has unexpected offset % instead of 3", ((cast(*void)(*instance.a)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Color.a)) == 1, "SDL_Color.a has unexpected size % instead of 1", size_of(type_of(SDL_Color.a)));
+        info := type_info(SDL_Color);
+        for info.members {
+            if it.name == {
+                case "r";
+                    assert(it.offset_in_bytes == 0, "SDL_Color.r has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_Color.r has unexpected size % instead of 1", it.type.runtime_size);
+                case "g";
+                    assert(it.offset_in_bytes == 1, "SDL_Color.g has unexpected offset % instead of 1", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_Color.g has unexpected size % instead of 1", it.type.runtime_size);
+                case "b";
+                    assert(it.offset_in_bytes == 2, "SDL_Color.b has unexpected offset % instead of 2", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_Color.b has unexpected size % instead of 1", it.type.runtime_size);
+                case "a";
+                    assert(it.offset_in_bytes == 3, "SDL_Color.a has unexpected offset % instead of 3", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_Color.a has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_Color) == 4, "SDL_Color has size % instead of 4", size_of(SDL_Color));
     }
 
     {
-        instance: SDL_FColor;
-        assert(((cast(*void)(*instance.r)) - cast(*void)(*instance)) == 0, "SDL_FColor.r has unexpected offset % instead of 0", ((cast(*void)(*instance.r)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_FColor.r)) == 4, "SDL_FColor.r has unexpected size % instead of 4", size_of(type_of(SDL_FColor.r)));
-        assert(((cast(*void)(*instance.g)) - cast(*void)(*instance)) == 4, "SDL_FColor.g has unexpected offset % instead of 4", ((cast(*void)(*instance.g)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_FColor.g)) == 4, "SDL_FColor.g has unexpected size % instead of 4", size_of(type_of(SDL_FColor.g)));
-        assert(((cast(*void)(*instance.b)) - cast(*void)(*instance)) == 8, "SDL_FColor.b has unexpected offset % instead of 8", ((cast(*void)(*instance.b)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_FColor.b)) == 4, "SDL_FColor.b has unexpected size % instead of 4", size_of(type_of(SDL_FColor.b)));
-        assert(((cast(*void)(*instance.a)) - cast(*void)(*instance)) == 12, "SDL_FColor.a has unexpected offset % instead of 12", ((cast(*void)(*instance.a)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_FColor.a)) == 4, "SDL_FColor.a has unexpected size % instead of 4", size_of(type_of(SDL_FColor.a)));
+        info := type_info(SDL_FColor);
+        for info.members {
+            if it.name == {
+                case "r";
+                    assert(it.offset_in_bytes == 0, "SDL_FColor.r has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_FColor.r has unexpected size % instead of 4", it.type.runtime_size);
+                case "g";
+                    assert(it.offset_in_bytes == 4, "SDL_FColor.g has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_FColor.g has unexpected size % instead of 4", it.type.runtime_size);
+                case "b";
+                    assert(it.offset_in_bytes == 8, "SDL_FColor.b has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_FColor.b has unexpected size % instead of 4", it.type.runtime_size);
+                case "a";
+                    assert(it.offset_in_bytes == 12, "SDL_FColor.a has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_FColor.a has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_FColor) == 16, "SDL_FColor has size % instead of 16", size_of(SDL_FColor));
     }
 
     {
-        instance: SDL_Palette;
-        assert(((cast(*void)(*instance.ncolors)) - cast(*void)(*instance)) == 0, "SDL_Palette.ncolors has unexpected offset % instead of 0", ((cast(*void)(*instance.ncolors)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Palette.ncolors)) == 4, "SDL_Palette.ncolors has unexpected size % instead of 4", size_of(type_of(SDL_Palette.ncolors)));
-        assert(((cast(*void)(*instance.colors)) - cast(*void)(*instance)) == 8, "SDL_Palette.colors has unexpected offset % instead of 8", ((cast(*void)(*instance.colors)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Palette.colors)) == 8, "SDL_Palette.colors has unexpected size % instead of 8", size_of(type_of(SDL_Palette.colors)));
-        assert(((cast(*void)(*instance.version)) - cast(*void)(*instance)) == 16, "SDL_Palette.version has unexpected offset % instead of 16", ((cast(*void)(*instance.version)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Palette.version)) == 4, "SDL_Palette.version has unexpected size % instead of 4", size_of(type_of(SDL_Palette.version)));
-        assert(((cast(*void)(*instance.refcount)) - cast(*void)(*instance)) == 20, "SDL_Palette.refcount has unexpected offset % instead of 20", ((cast(*void)(*instance.refcount)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Palette.refcount)) == 4, "SDL_Palette.refcount has unexpected size % instead of 4", size_of(type_of(SDL_Palette.refcount)));
+        info := type_info(SDL_Palette);
+        for info.members {
+            if it.name == {
+                case "ncolors";
+                    assert(it.offset_in_bytes == 0, "SDL_Palette.ncolors has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Palette.ncolors has unexpected size % instead of 4", it.type.runtime_size);
+                case "colors";
+                    assert(it.offset_in_bytes == 8, "SDL_Palette.colors has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_Palette.colors has unexpected size % instead of 8", it.type.runtime_size);
+                case "version";
+                    assert(it.offset_in_bytes == 16, "SDL_Palette.version has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Palette.version has unexpected size % instead of 4", it.type.runtime_size);
+                case "refcount";
+                    assert(it.offset_in_bytes == 20, "SDL_Palette.refcount has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Palette.refcount has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_Palette) == 24, "SDL_Palette has size % instead of 24", size_of(SDL_Palette));
     }
 
     {
-        instance: SDL_PixelFormatDetails;
-        assert(((cast(*void)(*instance.format)) - cast(*void)(*instance)) == 0, "SDL_PixelFormatDetails.format has unexpected offset % instead of 0", ((cast(*void)(*instance.format)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.format)) == 4, "SDL_PixelFormatDetails.format has unexpected size % instead of 4", size_of(type_of(SDL_PixelFormatDetails.format)));
-        assert(((cast(*void)(*instance.bits_per_pixel)) - cast(*void)(*instance)) == 4, "SDL_PixelFormatDetails.bits_per_pixel has unexpected offset % instead of 4", ((cast(*void)(*instance.bits_per_pixel)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.bits_per_pixel)) == 1, "SDL_PixelFormatDetails.bits_per_pixel has unexpected size % instead of 1", size_of(type_of(SDL_PixelFormatDetails.bits_per_pixel)));
-        assert(((cast(*void)(*instance.bytes_per_pixel)) - cast(*void)(*instance)) == 5, "SDL_PixelFormatDetails.bytes_per_pixel has unexpected offset % instead of 5", ((cast(*void)(*instance.bytes_per_pixel)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.bytes_per_pixel)) == 1, "SDL_PixelFormatDetails.bytes_per_pixel has unexpected size % instead of 1", size_of(type_of(SDL_PixelFormatDetails.bytes_per_pixel)));
-        assert(((cast(*void)(*instance.padding)) - cast(*void)(*instance)) == 6, "SDL_PixelFormatDetails.padding has unexpected offset % instead of 6", ((cast(*void)(*instance.padding)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.padding)) == 2, "SDL_PixelFormatDetails.padding has unexpected size % instead of 2", size_of(type_of(SDL_PixelFormatDetails.padding)));
-        assert(((cast(*void)(*instance.Rmask)) - cast(*void)(*instance)) == 8, "SDL_PixelFormatDetails.Rmask has unexpected offset % instead of 8", ((cast(*void)(*instance.Rmask)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.Rmask)) == 4, "SDL_PixelFormatDetails.Rmask has unexpected size % instead of 4", size_of(type_of(SDL_PixelFormatDetails.Rmask)));
-        assert(((cast(*void)(*instance.Gmask)) - cast(*void)(*instance)) == 12, "SDL_PixelFormatDetails.Gmask has unexpected offset % instead of 12", ((cast(*void)(*instance.Gmask)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.Gmask)) == 4, "SDL_PixelFormatDetails.Gmask has unexpected size % instead of 4", size_of(type_of(SDL_PixelFormatDetails.Gmask)));
-        assert(((cast(*void)(*instance.Bmask)) - cast(*void)(*instance)) == 16, "SDL_PixelFormatDetails.Bmask has unexpected offset % instead of 16", ((cast(*void)(*instance.Bmask)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.Bmask)) == 4, "SDL_PixelFormatDetails.Bmask has unexpected size % instead of 4", size_of(type_of(SDL_PixelFormatDetails.Bmask)));
-        assert(((cast(*void)(*instance.Amask)) - cast(*void)(*instance)) == 20, "SDL_PixelFormatDetails.Amask has unexpected offset % instead of 20", ((cast(*void)(*instance.Amask)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.Amask)) == 4, "SDL_PixelFormatDetails.Amask has unexpected size % instead of 4", size_of(type_of(SDL_PixelFormatDetails.Amask)));
-        assert(((cast(*void)(*instance.Rbits)) - cast(*void)(*instance)) == 24, "SDL_PixelFormatDetails.Rbits has unexpected offset % instead of 24", ((cast(*void)(*instance.Rbits)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.Rbits)) == 1, "SDL_PixelFormatDetails.Rbits has unexpected size % instead of 1", size_of(type_of(SDL_PixelFormatDetails.Rbits)));
-        assert(((cast(*void)(*instance.Gbits)) - cast(*void)(*instance)) == 25, "SDL_PixelFormatDetails.Gbits has unexpected offset % instead of 25", ((cast(*void)(*instance.Gbits)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.Gbits)) == 1, "SDL_PixelFormatDetails.Gbits has unexpected size % instead of 1", size_of(type_of(SDL_PixelFormatDetails.Gbits)));
-        assert(((cast(*void)(*instance.Bbits)) - cast(*void)(*instance)) == 26, "SDL_PixelFormatDetails.Bbits has unexpected offset % instead of 26", ((cast(*void)(*instance.Bbits)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.Bbits)) == 1, "SDL_PixelFormatDetails.Bbits has unexpected size % instead of 1", size_of(type_of(SDL_PixelFormatDetails.Bbits)));
-        assert(((cast(*void)(*instance.Abits)) - cast(*void)(*instance)) == 27, "SDL_PixelFormatDetails.Abits has unexpected offset % instead of 27", ((cast(*void)(*instance.Abits)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.Abits)) == 1, "SDL_PixelFormatDetails.Abits has unexpected size % instead of 1", size_of(type_of(SDL_PixelFormatDetails.Abits)));
-        assert(((cast(*void)(*instance.Rshift)) - cast(*void)(*instance)) == 28, "SDL_PixelFormatDetails.Rshift has unexpected offset % instead of 28", ((cast(*void)(*instance.Rshift)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.Rshift)) == 1, "SDL_PixelFormatDetails.Rshift has unexpected size % instead of 1", size_of(type_of(SDL_PixelFormatDetails.Rshift)));
-        assert(((cast(*void)(*instance.Gshift)) - cast(*void)(*instance)) == 29, "SDL_PixelFormatDetails.Gshift has unexpected offset % instead of 29", ((cast(*void)(*instance.Gshift)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.Gshift)) == 1, "SDL_PixelFormatDetails.Gshift has unexpected size % instead of 1", size_of(type_of(SDL_PixelFormatDetails.Gshift)));
-        assert(((cast(*void)(*instance.Bshift)) - cast(*void)(*instance)) == 30, "SDL_PixelFormatDetails.Bshift has unexpected offset % instead of 30", ((cast(*void)(*instance.Bshift)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.Bshift)) == 1, "SDL_PixelFormatDetails.Bshift has unexpected size % instead of 1", size_of(type_of(SDL_PixelFormatDetails.Bshift)));
-        assert(((cast(*void)(*instance.Ashift)) - cast(*void)(*instance)) == 31, "SDL_PixelFormatDetails.Ashift has unexpected offset % instead of 31", ((cast(*void)(*instance.Ashift)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PixelFormatDetails.Ashift)) == 1, "SDL_PixelFormatDetails.Ashift has unexpected size % instead of 1", size_of(type_of(SDL_PixelFormatDetails.Ashift)));
+        info := type_info(SDL_PixelFormatDetails);
+        for info.members {
+            if it.name == {
+                case "format";
+                    assert(it.offset_in_bytes == 0, "SDL_PixelFormatDetails.format has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PixelFormatDetails.format has unexpected size % instead of 4", it.type.runtime_size);
+                case "bits_per_pixel";
+                    assert(it.offset_in_bytes == 4, "SDL_PixelFormatDetails.bits_per_pixel has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PixelFormatDetails.bits_per_pixel has unexpected size % instead of 1", it.type.runtime_size);
+                case "bytes_per_pixel";
+                    assert(it.offset_in_bytes == 5, "SDL_PixelFormatDetails.bytes_per_pixel has unexpected offset % instead of 5", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PixelFormatDetails.bytes_per_pixel has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding";
+                    assert(it.offset_in_bytes == 6, "SDL_PixelFormatDetails.padding has unexpected offset % instead of 6", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_PixelFormatDetails.padding has unexpected size % instead of 2", it.type.runtime_size);
+                case "Rmask";
+                    assert(it.offset_in_bytes == 8, "SDL_PixelFormatDetails.Rmask has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PixelFormatDetails.Rmask has unexpected size % instead of 4", it.type.runtime_size);
+                case "Gmask";
+                    assert(it.offset_in_bytes == 12, "SDL_PixelFormatDetails.Gmask has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PixelFormatDetails.Gmask has unexpected size % instead of 4", it.type.runtime_size);
+                case "Bmask";
+                    assert(it.offset_in_bytes == 16, "SDL_PixelFormatDetails.Bmask has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PixelFormatDetails.Bmask has unexpected size % instead of 4", it.type.runtime_size);
+                case "Amask";
+                    assert(it.offset_in_bytes == 20, "SDL_PixelFormatDetails.Amask has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PixelFormatDetails.Amask has unexpected size % instead of 4", it.type.runtime_size);
+                case "Rbits";
+                    assert(it.offset_in_bytes == 24, "SDL_PixelFormatDetails.Rbits has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PixelFormatDetails.Rbits has unexpected size % instead of 1", it.type.runtime_size);
+                case "Gbits";
+                    assert(it.offset_in_bytes == 25, "SDL_PixelFormatDetails.Gbits has unexpected offset % instead of 25", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PixelFormatDetails.Gbits has unexpected size % instead of 1", it.type.runtime_size);
+                case "Bbits";
+                    assert(it.offset_in_bytes == 26, "SDL_PixelFormatDetails.Bbits has unexpected offset % instead of 26", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PixelFormatDetails.Bbits has unexpected size % instead of 1", it.type.runtime_size);
+                case "Abits";
+                    assert(it.offset_in_bytes == 27, "SDL_PixelFormatDetails.Abits has unexpected offset % instead of 27", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PixelFormatDetails.Abits has unexpected size % instead of 1", it.type.runtime_size);
+                case "Rshift";
+                    assert(it.offset_in_bytes == 28, "SDL_PixelFormatDetails.Rshift has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PixelFormatDetails.Rshift has unexpected size % instead of 1", it.type.runtime_size);
+                case "Gshift";
+                    assert(it.offset_in_bytes == 29, "SDL_PixelFormatDetails.Gshift has unexpected offset % instead of 29", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PixelFormatDetails.Gshift has unexpected size % instead of 1", it.type.runtime_size);
+                case "Bshift";
+                    assert(it.offset_in_bytes == 30, "SDL_PixelFormatDetails.Bshift has unexpected offset % instead of 30", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PixelFormatDetails.Bshift has unexpected size % instead of 1", it.type.runtime_size);
+                case "Ashift";
+                    assert(it.offset_in_bytes == 31, "SDL_PixelFormatDetails.Ashift has unexpected offset % instead of 31", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PixelFormatDetails.Ashift has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_PixelFormatDetails) == 32, "SDL_PixelFormatDetails has size % instead of 32", size_of(SDL_PixelFormatDetails));
     }
 
     {
-        instance: SDL_Point;
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 0, "SDL_Point.x has unexpected offset % instead of 0", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Point.x)) == 4, "SDL_Point.x has unexpected size % instead of 4", size_of(type_of(SDL_Point.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 4, "SDL_Point.y has unexpected offset % instead of 4", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Point.y)) == 4, "SDL_Point.y has unexpected size % instead of 4", size_of(type_of(SDL_Point.y)));
+        info := type_info(SDL_Point);
+        for info.members {
+            if it.name == {
+                case "x";
+                    assert(it.offset_in_bytes == 0, "SDL_Point.x has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Point.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 4, "SDL_Point.y has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Point.y has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_Point) == 8, "SDL_Point has size % instead of 8", size_of(SDL_Point));
     }
 
     {
-        instance: SDL_FPoint;
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 0, "SDL_FPoint.x has unexpected offset % instead of 0", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_FPoint.x)) == 4, "SDL_FPoint.x has unexpected size % instead of 4", size_of(type_of(SDL_FPoint.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 4, "SDL_FPoint.y has unexpected offset % instead of 4", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_FPoint.y)) == 4, "SDL_FPoint.y has unexpected size % instead of 4", size_of(type_of(SDL_FPoint.y)));
+        info := type_info(SDL_FPoint);
+        for info.members {
+            if it.name == {
+                case "x";
+                    assert(it.offset_in_bytes == 0, "SDL_FPoint.x has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_FPoint.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 4, "SDL_FPoint.y has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_FPoint.y has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_FPoint) == 8, "SDL_FPoint has size % instead of 8", size_of(SDL_FPoint));
     }
 
     {
-        instance: SDL_Rect;
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 0, "SDL_Rect.x has unexpected offset % instead of 0", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Rect.x)) == 4, "SDL_Rect.x has unexpected size % instead of 4", size_of(type_of(SDL_Rect.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 4, "SDL_Rect.y has unexpected offset % instead of 4", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Rect.y)) == 4, "SDL_Rect.y has unexpected size % instead of 4", size_of(type_of(SDL_Rect.y)));
-        assert(((cast(*void)(*instance.w)) - cast(*void)(*instance)) == 8, "SDL_Rect.w has unexpected offset % instead of 8", ((cast(*void)(*instance.w)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Rect.w)) == 4, "SDL_Rect.w has unexpected size % instead of 4", size_of(type_of(SDL_Rect.w)));
-        assert(((cast(*void)(*instance.h)) - cast(*void)(*instance)) == 12, "SDL_Rect.h has unexpected offset % instead of 12", ((cast(*void)(*instance.h)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Rect.h)) == 4, "SDL_Rect.h has unexpected size % instead of 4", size_of(type_of(SDL_Rect.h)));
+        info := type_info(SDL_Rect);
+        for info.members {
+            if it.name == {
+                case "x";
+                    assert(it.offset_in_bytes == 0, "SDL_Rect.x has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Rect.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 4, "SDL_Rect.y has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Rect.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "w";
+                    assert(it.offset_in_bytes == 8, "SDL_Rect.w has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Rect.w has unexpected size % instead of 4", it.type.runtime_size);
+                case "h";
+                    assert(it.offset_in_bytes == 12, "SDL_Rect.h has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Rect.h has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_Rect) == 16, "SDL_Rect has size % instead of 16", size_of(SDL_Rect));
     }
 
     {
-        instance: SDL_FRect;
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 0, "SDL_FRect.x has unexpected offset % instead of 0", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_FRect.x)) == 4, "SDL_FRect.x has unexpected size % instead of 4", size_of(type_of(SDL_FRect.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 4, "SDL_FRect.y has unexpected offset % instead of 4", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_FRect.y)) == 4, "SDL_FRect.y has unexpected size % instead of 4", size_of(type_of(SDL_FRect.y)));
-        assert(((cast(*void)(*instance.w)) - cast(*void)(*instance)) == 8, "SDL_FRect.w has unexpected offset % instead of 8", ((cast(*void)(*instance.w)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_FRect.w)) == 4, "SDL_FRect.w has unexpected size % instead of 4", size_of(type_of(SDL_FRect.w)));
-        assert(((cast(*void)(*instance.h)) - cast(*void)(*instance)) == 12, "SDL_FRect.h has unexpected offset % instead of 12", ((cast(*void)(*instance.h)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_FRect.h)) == 4, "SDL_FRect.h has unexpected size % instead of 4", size_of(type_of(SDL_FRect.h)));
+        info := type_info(SDL_FRect);
+        for info.members {
+            if it.name == {
+                case "x";
+                    assert(it.offset_in_bytes == 0, "SDL_FRect.x has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_FRect.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 4, "SDL_FRect.y has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_FRect.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "w";
+                    assert(it.offset_in_bytes == 8, "SDL_FRect.w has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_FRect.w has unexpected size % instead of 4", it.type.runtime_size);
+                case "h";
+                    assert(it.offset_in_bytes == 12, "SDL_FRect.h has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_FRect.h has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_FRect) == 16, "SDL_FRect has size % instead of 16", size_of(SDL_FRect));
     }
 
     {
-        instance: SDL_Surface;
-        assert(((cast(*void)(*instance.flags)) - cast(*void)(*instance)) == 0, "SDL_Surface.flags has unexpected offset % instead of 0", ((cast(*void)(*instance.flags)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Surface.flags)) == 4, "SDL_Surface.flags has unexpected size % instead of 4", size_of(type_of(SDL_Surface.flags)));
-        assert(((cast(*void)(*instance.format)) - cast(*void)(*instance)) == 4, "SDL_Surface.format has unexpected offset % instead of 4", ((cast(*void)(*instance.format)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Surface.format)) == 4, "SDL_Surface.format has unexpected size % instead of 4", size_of(type_of(SDL_Surface.format)));
-        assert(((cast(*void)(*instance.w)) - cast(*void)(*instance)) == 8, "SDL_Surface.w has unexpected offset % instead of 8", ((cast(*void)(*instance.w)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Surface.w)) == 4, "SDL_Surface.w has unexpected size % instead of 4", size_of(type_of(SDL_Surface.w)));
-        assert(((cast(*void)(*instance.h)) - cast(*void)(*instance)) == 12, "SDL_Surface.h has unexpected offset % instead of 12", ((cast(*void)(*instance.h)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Surface.h)) == 4, "SDL_Surface.h has unexpected size % instead of 4", size_of(type_of(SDL_Surface.h)));
-        assert(((cast(*void)(*instance.pitch)) - cast(*void)(*instance)) == 16, "SDL_Surface.pitch has unexpected offset % instead of 16", ((cast(*void)(*instance.pitch)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Surface.pitch)) == 4, "SDL_Surface.pitch has unexpected size % instead of 4", size_of(type_of(SDL_Surface.pitch)));
-        assert(((cast(*void)(*instance.pixels)) - cast(*void)(*instance)) == 24, "SDL_Surface.pixels has unexpected offset % instead of 24", ((cast(*void)(*instance.pixels)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Surface.pixels)) == 8, "SDL_Surface.pixels has unexpected size % instead of 8", size_of(type_of(SDL_Surface.pixels)));
-        assert(((cast(*void)(*instance.refcount)) - cast(*void)(*instance)) == 32, "SDL_Surface.refcount has unexpected offset % instead of 32", ((cast(*void)(*instance.refcount)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Surface.refcount)) == 4, "SDL_Surface.refcount has unexpected size % instead of 4", size_of(type_of(SDL_Surface.refcount)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 40, "SDL_Surface.reserved has unexpected offset % instead of 40", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Surface.reserved)) == 8, "SDL_Surface.reserved has unexpected size % instead of 8", size_of(type_of(SDL_Surface.reserved)));
+        info := type_info(SDL_Surface);
+        for info.members {
+            if it.name == {
+                case "flags";
+                    assert(it.offset_in_bytes == 0, "SDL_Surface.flags has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Surface.flags has unexpected size % instead of 4", it.type.runtime_size);
+                case "format";
+                    assert(it.offset_in_bytes == 4, "SDL_Surface.format has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Surface.format has unexpected size % instead of 4", it.type.runtime_size);
+                case "w";
+                    assert(it.offset_in_bytes == 8, "SDL_Surface.w has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Surface.w has unexpected size % instead of 4", it.type.runtime_size);
+                case "h";
+                    assert(it.offset_in_bytes == 12, "SDL_Surface.h has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Surface.h has unexpected size % instead of 4", it.type.runtime_size);
+                case "pitch";
+                    assert(it.offset_in_bytes == 16, "SDL_Surface.pitch has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Surface.pitch has unexpected size % instead of 4", it.type.runtime_size);
+                case "pixels";
+                    assert(it.offset_in_bytes == 24, "SDL_Surface.pixels has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_Surface.pixels has unexpected size % instead of 8", it.type.runtime_size);
+                case "refcount";
+                    assert(it.offset_in_bytes == 32, "SDL_Surface.refcount has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Surface.refcount has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 40, "SDL_Surface.reserved has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_Surface.reserved has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_Surface) == 48, "SDL_Surface has size % instead of 48", size_of(SDL_Surface));
     }
 
     {
-        instance: SDL_CameraSpec;
-        assert(((cast(*void)(*instance.format)) - cast(*void)(*instance)) == 0, "SDL_CameraSpec.format has unexpected offset % instead of 0", ((cast(*void)(*instance.format)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CameraSpec.format)) == 4, "SDL_CameraSpec.format has unexpected size % instead of 4", size_of(type_of(SDL_CameraSpec.format)));
-        assert(((cast(*void)(*instance.colorspace)) - cast(*void)(*instance)) == 4, "SDL_CameraSpec.colorspace has unexpected offset % instead of 4", ((cast(*void)(*instance.colorspace)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CameraSpec.colorspace)) == 4, "SDL_CameraSpec.colorspace has unexpected size % instead of 4", size_of(type_of(SDL_CameraSpec.colorspace)));
-        assert(((cast(*void)(*instance.width)) - cast(*void)(*instance)) == 8, "SDL_CameraSpec.width has unexpected offset % instead of 8", ((cast(*void)(*instance.width)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CameraSpec.width)) == 4, "SDL_CameraSpec.width has unexpected size % instead of 4", size_of(type_of(SDL_CameraSpec.width)));
-        assert(((cast(*void)(*instance.height)) - cast(*void)(*instance)) == 12, "SDL_CameraSpec.height has unexpected offset % instead of 12", ((cast(*void)(*instance.height)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CameraSpec.height)) == 4, "SDL_CameraSpec.height has unexpected size % instead of 4", size_of(type_of(SDL_CameraSpec.height)));
-        assert(((cast(*void)(*instance.framerate_numerator)) - cast(*void)(*instance)) == 16, "SDL_CameraSpec.framerate_numerator has unexpected offset % instead of 16", ((cast(*void)(*instance.framerate_numerator)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CameraSpec.framerate_numerator)) == 4, "SDL_CameraSpec.framerate_numerator has unexpected size % instead of 4", size_of(type_of(SDL_CameraSpec.framerate_numerator)));
-        assert(((cast(*void)(*instance.framerate_denominator)) - cast(*void)(*instance)) == 20, "SDL_CameraSpec.framerate_denominator has unexpected offset % instead of 20", ((cast(*void)(*instance.framerate_denominator)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CameraSpec.framerate_denominator)) == 4, "SDL_CameraSpec.framerate_denominator has unexpected size % instead of 4", size_of(type_of(SDL_CameraSpec.framerate_denominator)));
+        info := type_info(SDL_CameraSpec);
+        for info.members {
+            if it.name == {
+                case "format";
+                    assert(it.offset_in_bytes == 0, "SDL_CameraSpec.format has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_CameraSpec.format has unexpected size % instead of 4", it.type.runtime_size);
+                case "colorspace";
+                    assert(it.offset_in_bytes == 4, "SDL_CameraSpec.colorspace has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_CameraSpec.colorspace has unexpected size % instead of 4", it.type.runtime_size);
+                case "width";
+                    assert(it.offset_in_bytes == 8, "SDL_CameraSpec.width has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_CameraSpec.width has unexpected size % instead of 4", it.type.runtime_size);
+                case "height";
+                    assert(it.offset_in_bytes == 12, "SDL_CameraSpec.height has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_CameraSpec.height has unexpected size % instead of 4", it.type.runtime_size);
+                case "framerate_numerator";
+                    assert(it.offset_in_bytes == 16, "SDL_CameraSpec.framerate_numerator has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_CameraSpec.framerate_numerator has unexpected size % instead of 4", it.type.runtime_size);
+                case "framerate_denominator";
+                    assert(it.offset_in_bytes == 20, "SDL_CameraSpec.framerate_denominator has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_CameraSpec.framerate_denominator has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_CameraSpec) == 24, "SDL_CameraSpec has size % instead of 24", size_of(SDL_CameraSpec));
     }
 
     {
-        instance: SDL_DisplayMode;
-        assert(((cast(*void)(*instance.displayID)) - cast(*void)(*instance)) == 0, "SDL_DisplayMode.displayID has unexpected offset % instead of 0", ((cast(*void)(*instance.displayID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayMode.displayID)) == 4, "SDL_DisplayMode.displayID has unexpected size % instead of 4", size_of(type_of(SDL_DisplayMode.displayID)));
-        assert(((cast(*void)(*instance.format)) - cast(*void)(*instance)) == 4, "SDL_DisplayMode.format has unexpected offset % instead of 4", ((cast(*void)(*instance.format)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayMode.format)) == 4, "SDL_DisplayMode.format has unexpected size % instead of 4", size_of(type_of(SDL_DisplayMode.format)));
-        assert(((cast(*void)(*instance.w)) - cast(*void)(*instance)) == 8, "SDL_DisplayMode.w has unexpected offset % instead of 8", ((cast(*void)(*instance.w)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayMode.w)) == 4, "SDL_DisplayMode.w has unexpected size % instead of 4", size_of(type_of(SDL_DisplayMode.w)));
-        assert(((cast(*void)(*instance.h)) - cast(*void)(*instance)) == 12, "SDL_DisplayMode.h has unexpected offset % instead of 12", ((cast(*void)(*instance.h)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayMode.h)) == 4, "SDL_DisplayMode.h has unexpected size % instead of 4", size_of(type_of(SDL_DisplayMode.h)));
-        assert(((cast(*void)(*instance.pixel_density)) - cast(*void)(*instance)) == 16, "SDL_DisplayMode.pixel_density has unexpected offset % instead of 16", ((cast(*void)(*instance.pixel_density)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayMode.pixel_density)) == 4, "SDL_DisplayMode.pixel_density has unexpected size % instead of 4", size_of(type_of(SDL_DisplayMode.pixel_density)));
-        assert(((cast(*void)(*instance.refresh_rate)) - cast(*void)(*instance)) == 20, "SDL_DisplayMode.refresh_rate has unexpected offset % instead of 20", ((cast(*void)(*instance.refresh_rate)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayMode.refresh_rate)) == 4, "SDL_DisplayMode.refresh_rate has unexpected size % instead of 4", size_of(type_of(SDL_DisplayMode.refresh_rate)));
-        assert(((cast(*void)(*instance.refresh_rate_numerator)) - cast(*void)(*instance)) == 24, "SDL_DisplayMode.refresh_rate_numerator has unexpected offset % instead of 24", ((cast(*void)(*instance.refresh_rate_numerator)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayMode.refresh_rate_numerator)) == 4, "SDL_DisplayMode.refresh_rate_numerator has unexpected size % instead of 4", size_of(type_of(SDL_DisplayMode.refresh_rate_numerator)));
-        assert(((cast(*void)(*instance.refresh_rate_denominator)) - cast(*void)(*instance)) == 28, "SDL_DisplayMode.refresh_rate_denominator has unexpected offset % instead of 28", ((cast(*void)(*instance.refresh_rate_denominator)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayMode.refresh_rate_denominator)) == 4, "SDL_DisplayMode.refresh_rate_denominator has unexpected size % instead of 4", size_of(type_of(SDL_DisplayMode.refresh_rate_denominator)));
-        assert(((cast(*void)(*instance.internal)) - cast(*void)(*instance)) == 32, "SDL_DisplayMode.internal has unexpected offset % instead of 32", ((cast(*void)(*instance.internal)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayMode.internal)) == 8, "SDL_DisplayMode.internal has unexpected size % instead of 8", size_of(type_of(SDL_DisplayMode.internal)));
+        info := type_info(SDL_DisplayMode);
+        for info.members {
+            if it.name == {
+                case "displayID";
+                    assert(it.offset_in_bytes == 0, "SDL_DisplayMode.displayID has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayMode.displayID has unexpected size % instead of 4", it.type.runtime_size);
+                case "format";
+                    assert(it.offset_in_bytes == 4, "SDL_DisplayMode.format has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayMode.format has unexpected size % instead of 4", it.type.runtime_size);
+                case "w";
+                    assert(it.offset_in_bytes == 8, "SDL_DisplayMode.w has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayMode.w has unexpected size % instead of 4", it.type.runtime_size);
+                case "h";
+                    assert(it.offset_in_bytes == 12, "SDL_DisplayMode.h has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayMode.h has unexpected size % instead of 4", it.type.runtime_size);
+                case "pixel_density";
+                    assert(it.offset_in_bytes == 16, "SDL_DisplayMode.pixel_density has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayMode.pixel_density has unexpected size % instead of 4", it.type.runtime_size);
+                case "refresh_rate";
+                    assert(it.offset_in_bytes == 20, "SDL_DisplayMode.refresh_rate has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayMode.refresh_rate has unexpected size % instead of 4", it.type.runtime_size);
+                case "refresh_rate_numerator";
+                    assert(it.offset_in_bytes == 24, "SDL_DisplayMode.refresh_rate_numerator has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayMode.refresh_rate_numerator has unexpected size % instead of 4", it.type.runtime_size);
+                case "refresh_rate_denominator";
+                    assert(it.offset_in_bytes == 28, "SDL_DisplayMode.refresh_rate_denominator has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayMode.refresh_rate_denominator has unexpected size % instead of 4", it.type.runtime_size);
+                case "internal";
+                    assert(it.offset_in_bytes == 32, "SDL_DisplayMode.internal has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_DisplayMode.internal has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_DisplayMode) == 40, "SDL_DisplayMode has size % instead of 40", size_of(SDL_DisplayMode));
     }
 
     {
-        instance: SDL_DialogFileFilter;
-        assert(((cast(*void)(*instance.name)) - cast(*void)(*instance)) == 0, "SDL_DialogFileFilter.name has unexpected offset % instead of 0", ((cast(*void)(*instance.name)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DialogFileFilter.name)) == 8, "SDL_DialogFileFilter.name has unexpected size % instead of 8", size_of(type_of(SDL_DialogFileFilter.name)));
-        assert(((cast(*void)(*instance.pattern)) - cast(*void)(*instance)) == 8, "SDL_DialogFileFilter.pattern has unexpected offset % instead of 8", ((cast(*void)(*instance.pattern)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DialogFileFilter.pattern)) == 8, "SDL_DialogFileFilter.pattern has unexpected size % instead of 8", size_of(type_of(SDL_DialogFileFilter.pattern)));
+        info := type_info(SDL_DialogFileFilter);
+        for info.members {
+            if it.name == {
+                case "name";
+                    assert(it.offset_in_bytes == 0, "SDL_DialogFileFilter.name has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_DialogFileFilter.name has unexpected size % instead of 8", it.type.runtime_size);
+                case "pattern";
+                    assert(it.offset_in_bytes == 8, "SDL_DialogFileFilter.pattern has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_DialogFileFilter.pattern has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_DialogFileFilter) == 16, "SDL_DialogFileFilter has size % instead of 16", size_of(SDL_DialogFileFilter));
     }
 
     {
-        instance: SDL_GUID;
-        assert(((cast(*void)(*instance.data)) - cast(*void)(*instance)) == 0, "SDL_GUID.data has unexpected offset % instead of 0", ((cast(*void)(*instance.data)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GUID.data)) == 16, "SDL_GUID.data has unexpected size % instead of 16", size_of(type_of(SDL_GUID.data)));
+        info := type_info(SDL_GUID);
+        for info.members {
+            if it.name == {
+                case "data";
+                    assert(it.offset_in_bytes == 0, "SDL_GUID.data has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_GUID.data has unexpected size % instead of 16", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GUID) == 16, "SDL_GUID has size % instead of 16", size_of(SDL_GUID));
     }
 
     {
-        instance: SDL_VirtualJoystickTouchpadDesc;
-        assert(((cast(*void)(*instance.nfingers)) - cast(*void)(*instance)) == 0, "SDL_VirtualJoystickTouchpadDesc.nfingers has unexpected offset % instead of 0", ((cast(*void)(*instance.nfingers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickTouchpadDesc.nfingers)) == 2, "SDL_VirtualJoystickTouchpadDesc.nfingers has unexpected size % instead of 2", size_of(type_of(SDL_VirtualJoystickTouchpadDesc.nfingers)));
-        assert(((cast(*void)(*instance.padding)) - cast(*void)(*instance)) == 2, "SDL_VirtualJoystickTouchpadDesc.padding has unexpected offset % instead of 2", ((cast(*void)(*instance.padding)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickTouchpadDesc.padding)) == 6, "SDL_VirtualJoystickTouchpadDesc.padding has unexpected size % instead of 6", size_of(type_of(SDL_VirtualJoystickTouchpadDesc.padding)));
+        info := type_info(SDL_VirtualJoystickTouchpadDesc);
+        for info.members {
+            if it.name == {
+                case "nfingers";
+                    assert(it.offset_in_bytes == 0, "SDL_VirtualJoystickTouchpadDesc.nfingers has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_VirtualJoystickTouchpadDesc.nfingers has unexpected size % instead of 2", it.type.runtime_size);
+                case "padding";
+                    assert(it.offset_in_bytes == 2, "SDL_VirtualJoystickTouchpadDesc.padding has unexpected offset % instead of 2", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 6, "SDL_VirtualJoystickTouchpadDesc.padding has unexpected size % instead of 6", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_VirtualJoystickTouchpadDesc) == 8, "SDL_VirtualJoystickTouchpadDesc has size % instead of 8", size_of(SDL_VirtualJoystickTouchpadDesc));
     }
 
     {
-        instance: SDL_VirtualJoystickSensorDesc;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_VirtualJoystickSensorDesc.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickSensorDesc.type)) == 4, "SDL_VirtualJoystickSensorDesc.type has unexpected size % instead of 4", size_of(type_of(SDL_VirtualJoystickSensorDesc.type)));
-        assert(((cast(*void)(*instance.rate)) - cast(*void)(*instance)) == 4, "SDL_VirtualJoystickSensorDesc.rate has unexpected offset % instead of 4", ((cast(*void)(*instance.rate)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickSensorDesc.rate)) == 4, "SDL_VirtualJoystickSensorDesc.rate has unexpected size % instead of 4", size_of(type_of(SDL_VirtualJoystickSensorDesc.rate)));
+        info := type_info(SDL_VirtualJoystickSensorDesc);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_VirtualJoystickSensorDesc.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_VirtualJoystickSensorDesc.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "rate";
+                    assert(it.offset_in_bytes == 4, "SDL_VirtualJoystickSensorDesc.rate has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_VirtualJoystickSensorDesc.rate has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_VirtualJoystickSensorDesc) == 8, "SDL_VirtualJoystickSensorDesc has size % instead of 8", size_of(SDL_VirtualJoystickSensorDesc));
     }
 
     {
-        instance: SDL_VirtualJoystickDesc;
-        assert(((cast(*void)(*instance.version)) - cast(*void)(*instance)) == 0, "SDL_VirtualJoystickDesc.version has unexpected offset % instead of 0", ((cast(*void)(*instance.version)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.version)) == 4, "SDL_VirtualJoystickDesc.version has unexpected size % instead of 4", size_of(type_of(SDL_VirtualJoystickDesc.version)));
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 4, "SDL_VirtualJoystickDesc.type has unexpected offset % instead of 4", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.type)) == 2, "SDL_VirtualJoystickDesc.type has unexpected size % instead of 2", size_of(type_of(SDL_VirtualJoystickDesc.type)));
-        assert(((cast(*void)(*instance.padding)) - cast(*void)(*instance)) == 6, "SDL_VirtualJoystickDesc.padding has unexpected offset % instead of 6", ((cast(*void)(*instance.padding)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.padding)) == 2, "SDL_VirtualJoystickDesc.padding has unexpected size % instead of 2", size_of(type_of(SDL_VirtualJoystickDesc.padding)));
-        assert(((cast(*void)(*instance.vendor_id)) - cast(*void)(*instance)) == 8, "SDL_VirtualJoystickDesc.vendor_id has unexpected offset % instead of 8", ((cast(*void)(*instance.vendor_id)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.vendor_id)) == 2, "SDL_VirtualJoystickDesc.vendor_id has unexpected size % instead of 2", size_of(type_of(SDL_VirtualJoystickDesc.vendor_id)));
-        assert(((cast(*void)(*instance.product_id)) - cast(*void)(*instance)) == 10, "SDL_VirtualJoystickDesc.product_id has unexpected offset % instead of 10", ((cast(*void)(*instance.product_id)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.product_id)) == 2, "SDL_VirtualJoystickDesc.product_id has unexpected size % instead of 2", size_of(type_of(SDL_VirtualJoystickDesc.product_id)));
-        assert(((cast(*void)(*instance.naxes)) - cast(*void)(*instance)) == 12, "SDL_VirtualJoystickDesc.naxes has unexpected offset % instead of 12", ((cast(*void)(*instance.naxes)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.naxes)) == 2, "SDL_VirtualJoystickDesc.naxes has unexpected size % instead of 2", size_of(type_of(SDL_VirtualJoystickDesc.naxes)));
-        assert(((cast(*void)(*instance.nbuttons)) - cast(*void)(*instance)) == 14, "SDL_VirtualJoystickDesc.nbuttons has unexpected offset % instead of 14", ((cast(*void)(*instance.nbuttons)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.nbuttons)) == 2, "SDL_VirtualJoystickDesc.nbuttons has unexpected size % instead of 2", size_of(type_of(SDL_VirtualJoystickDesc.nbuttons)));
-        assert(((cast(*void)(*instance.nballs)) - cast(*void)(*instance)) == 16, "SDL_VirtualJoystickDesc.nballs has unexpected offset % instead of 16", ((cast(*void)(*instance.nballs)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.nballs)) == 2, "SDL_VirtualJoystickDesc.nballs has unexpected size % instead of 2", size_of(type_of(SDL_VirtualJoystickDesc.nballs)));
-        assert(((cast(*void)(*instance.nhats)) - cast(*void)(*instance)) == 18, "SDL_VirtualJoystickDesc.nhats has unexpected offset % instead of 18", ((cast(*void)(*instance.nhats)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.nhats)) == 2, "SDL_VirtualJoystickDesc.nhats has unexpected size % instead of 2", size_of(type_of(SDL_VirtualJoystickDesc.nhats)));
-        assert(((cast(*void)(*instance.ntouchpads)) - cast(*void)(*instance)) == 20, "SDL_VirtualJoystickDesc.ntouchpads has unexpected offset % instead of 20", ((cast(*void)(*instance.ntouchpads)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.ntouchpads)) == 2, "SDL_VirtualJoystickDesc.ntouchpads has unexpected size % instead of 2", size_of(type_of(SDL_VirtualJoystickDesc.ntouchpads)));
-        assert(((cast(*void)(*instance.nsensors)) - cast(*void)(*instance)) == 22, "SDL_VirtualJoystickDesc.nsensors has unexpected offset % instead of 22", ((cast(*void)(*instance.nsensors)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.nsensors)) == 2, "SDL_VirtualJoystickDesc.nsensors has unexpected size % instead of 2", size_of(type_of(SDL_VirtualJoystickDesc.nsensors)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 24, "SDL_VirtualJoystickDesc.padding2 has unexpected offset % instead of 24", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.padding2)) == 4, "SDL_VirtualJoystickDesc.padding2 has unexpected size % instead of 4", size_of(type_of(SDL_VirtualJoystickDesc.padding2)));
-        assert(((cast(*void)(*instance.button_mask)) - cast(*void)(*instance)) == 28, "SDL_VirtualJoystickDesc.button_mask has unexpected offset % instead of 28", ((cast(*void)(*instance.button_mask)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.button_mask)) == 4, "SDL_VirtualJoystickDesc.button_mask has unexpected size % instead of 4", size_of(type_of(SDL_VirtualJoystickDesc.button_mask)));
-        assert(((cast(*void)(*instance.axis_mask)) - cast(*void)(*instance)) == 32, "SDL_VirtualJoystickDesc.axis_mask has unexpected offset % instead of 32", ((cast(*void)(*instance.axis_mask)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.axis_mask)) == 4, "SDL_VirtualJoystickDesc.axis_mask has unexpected size % instead of 4", size_of(type_of(SDL_VirtualJoystickDesc.axis_mask)));
-        assert(((cast(*void)(*instance.name)) - cast(*void)(*instance)) == 40, "SDL_VirtualJoystickDesc.name has unexpected offset % instead of 40", ((cast(*void)(*instance.name)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.name)) == 8, "SDL_VirtualJoystickDesc.name has unexpected size % instead of 8", size_of(type_of(SDL_VirtualJoystickDesc.name)));
-        assert(((cast(*void)(*instance.touchpads)) - cast(*void)(*instance)) == 48, "SDL_VirtualJoystickDesc.touchpads has unexpected offset % instead of 48", ((cast(*void)(*instance.touchpads)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.touchpads)) == 8, "SDL_VirtualJoystickDesc.touchpads has unexpected size % instead of 8", size_of(type_of(SDL_VirtualJoystickDesc.touchpads)));
-        assert(((cast(*void)(*instance.sensors)) - cast(*void)(*instance)) == 56, "SDL_VirtualJoystickDesc.sensors has unexpected offset % instead of 56", ((cast(*void)(*instance.sensors)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.sensors)) == 8, "SDL_VirtualJoystickDesc.sensors has unexpected size % instead of 8", size_of(type_of(SDL_VirtualJoystickDesc.sensors)));
-        assert(((cast(*void)(*instance.userdata)) - cast(*void)(*instance)) == 64, "SDL_VirtualJoystickDesc.userdata has unexpected offset % instead of 64", ((cast(*void)(*instance.userdata)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.userdata)) == 8, "SDL_VirtualJoystickDesc.userdata has unexpected size % instead of 8", size_of(type_of(SDL_VirtualJoystickDesc.userdata)));
-        assert(((cast(*void)(*instance.Update)) - cast(*void)(*instance)) == 72, "SDL_VirtualJoystickDesc.Update has unexpected offset % instead of 72", ((cast(*void)(*instance.Update)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.Update)) == 8, "SDL_VirtualJoystickDesc.Update has unexpected size % instead of 8", size_of(type_of(SDL_VirtualJoystickDesc.Update)));
-        assert(((cast(*void)(*instance.SetPlayerIndex)) - cast(*void)(*instance)) == 80, "SDL_VirtualJoystickDesc.SetPlayerIndex has unexpected offset % instead of 80", ((cast(*void)(*instance.SetPlayerIndex)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.SetPlayerIndex)) == 8, "SDL_VirtualJoystickDesc.SetPlayerIndex has unexpected size % instead of 8", size_of(type_of(SDL_VirtualJoystickDesc.SetPlayerIndex)));
-        assert(((cast(*void)(*instance.Rumble)) - cast(*void)(*instance)) == 88, "SDL_VirtualJoystickDesc.Rumble has unexpected offset % instead of 88", ((cast(*void)(*instance.Rumble)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.Rumble)) == 8, "SDL_VirtualJoystickDesc.Rumble has unexpected size % instead of 8", size_of(type_of(SDL_VirtualJoystickDesc.Rumble)));
-        assert(((cast(*void)(*instance.RumbleTriggers)) - cast(*void)(*instance)) == 96, "SDL_VirtualJoystickDesc.RumbleTriggers has unexpected offset % instead of 96", ((cast(*void)(*instance.RumbleTriggers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.RumbleTriggers)) == 8, "SDL_VirtualJoystickDesc.RumbleTriggers has unexpected size % instead of 8", size_of(type_of(SDL_VirtualJoystickDesc.RumbleTriggers)));
-        assert(((cast(*void)(*instance.SetLED)) - cast(*void)(*instance)) == 104, "SDL_VirtualJoystickDesc.SetLED has unexpected offset % instead of 104", ((cast(*void)(*instance.SetLED)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.SetLED)) == 8, "SDL_VirtualJoystickDesc.SetLED has unexpected size % instead of 8", size_of(type_of(SDL_VirtualJoystickDesc.SetLED)));
-        assert(((cast(*void)(*instance.SendEffect)) - cast(*void)(*instance)) == 112, "SDL_VirtualJoystickDesc.SendEffect has unexpected offset % instead of 112", ((cast(*void)(*instance.SendEffect)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.SendEffect)) == 8, "SDL_VirtualJoystickDesc.SendEffect has unexpected size % instead of 8", size_of(type_of(SDL_VirtualJoystickDesc.SendEffect)));
-        assert(((cast(*void)(*instance.SetSensorsEnabled)) - cast(*void)(*instance)) == 120, "SDL_VirtualJoystickDesc.SetSensorsEnabled has unexpected offset % instead of 120", ((cast(*void)(*instance.SetSensorsEnabled)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.SetSensorsEnabled)) == 8, "SDL_VirtualJoystickDesc.SetSensorsEnabled has unexpected size % instead of 8", size_of(type_of(SDL_VirtualJoystickDesc.SetSensorsEnabled)));
-        assert(((cast(*void)(*instance.Cleanup)) - cast(*void)(*instance)) == 128, "SDL_VirtualJoystickDesc.Cleanup has unexpected offset % instead of 128", ((cast(*void)(*instance.Cleanup)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_VirtualJoystickDesc.Cleanup)) == 8, "SDL_VirtualJoystickDesc.Cleanup has unexpected size % instead of 8", size_of(type_of(SDL_VirtualJoystickDesc.Cleanup)));
+        info := type_info(SDL_VirtualJoystickDesc);
+        for info.members {
+            if it.name == {
+                case "version";
+                    assert(it.offset_in_bytes == 0, "SDL_VirtualJoystickDesc.version has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_VirtualJoystickDesc.version has unexpected size % instead of 4", it.type.runtime_size);
+                case "type";
+                    assert(it.offset_in_bytes == 4, "SDL_VirtualJoystickDesc.type has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_VirtualJoystickDesc.type has unexpected size % instead of 2", it.type.runtime_size);
+                case "padding";
+                    assert(it.offset_in_bytes == 6, "SDL_VirtualJoystickDesc.padding has unexpected offset % instead of 6", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_VirtualJoystickDesc.padding has unexpected size % instead of 2", it.type.runtime_size);
+                case "vendor_id";
+                    assert(it.offset_in_bytes == 8, "SDL_VirtualJoystickDesc.vendor_id has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_VirtualJoystickDesc.vendor_id has unexpected size % instead of 2", it.type.runtime_size);
+                case "product_id";
+                    assert(it.offset_in_bytes == 10, "SDL_VirtualJoystickDesc.product_id has unexpected offset % instead of 10", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_VirtualJoystickDesc.product_id has unexpected size % instead of 2", it.type.runtime_size);
+                case "naxes";
+                    assert(it.offset_in_bytes == 12, "SDL_VirtualJoystickDesc.naxes has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_VirtualJoystickDesc.naxes has unexpected size % instead of 2", it.type.runtime_size);
+                case "nbuttons";
+                    assert(it.offset_in_bytes == 14, "SDL_VirtualJoystickDesc.nbuttons has unexpected offset % instead of 14", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_VirtualJoystickDesc.nbuttons has unexpected size % instead of 2", it.type.runtime_size);
+                case "nballs";
+                    assert(it.offset_in_bytes == 16, "SDL_VirtualJoystickDesc.nballs has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_VirtualJoystickDesc.nballs has unexpected size % instead of 2", it.type.runtime_size);
+                case "nhats";
+                    assert(it.offset_in_bytes == 18, "SDL_VirtualJoystickDesc.nhats has unexpected offset % instead of 18", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_VirtualJoystickDesc.nhats has unexpected size % instead of 2", it.type.runtime_size);
+                case "ntouchpads";
+                    assert(it.offset_in_bytes == 20, "SDL_VirtualJoystickDesc.ntouchpads has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_VirtualJoystickDesc.ntouchpads has unexpected size % instead of 2", it.type.runtime_size);
+                case "nsensors";
+                    assert(it.offset_in_bytes == 22, "SDL_VirtualJoystickDesc.nsensors has unexpected offset % instead of 22", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_VirtualJoystickDesc.nsensors has unexpected size % instead of 2", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 24, "SDL_VirtualJoystickDesc.padding2 has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_VirtualJoystickDesc.padding2 has unexpected size % instead of 4", it.type.runtime_size);
+                case "button_mask";
+                    assert(it.offset_in_bytes == 28, "SDL_VirtualJoystickDesc.button_mask has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_VirtualJoystickDesc.button_mask has unexpected size % instead of 4", it.type.runtime_size);
+                case "axis_mask";
+                    assert(it.offset_in_bytes == 32, "SDL_VirtualJoystickDesc.axis_mask has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_VirtualJoystickDesc.axis_mask has unexpected size % instead of 4", it.type.runtime_size);
+                case "name";
+                    assert(it.offset_in_bytes == 40, "SDL_VirtualJoystickDesc.name has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_VirtualJoystickDesc.name has unexpected size % instead of 8", it.type.runtime_size);
+                case "touchpads";
+                    assert(it.offset_in_bytes == 48, "SDL_VirtualJoystickDesc.touchpads has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_VirtualJoystickDesc.touchpads has unexpected size % instead of 8", it.type.runtime_size);
+                case "sensors";
+                    assert(it.offset_in_bytes == 56, "SDL_VirtualJoystickDesc.sensors has unexpected offset % instead of 56", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_VirtualJoystickDesc.sensors has unexpected size % instead of 8", it.type.runtime_size);
+                case "userdata";
+                    assert(it.offset_in_bytes == 64, "SDL_VirtualJoystickDesc.userdata has unexpected offset % instead of 64", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_VirtualJoystickDesc.userdata has unexpected size % instead of 8", it.type.runtime_size);
+                case "Update";
+                    assert(it.offset_in_bytes == 72, "SDL_VirtualJoystickDesc.Update has unexpected offset % instead of 72", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_VirtualJoystickDesc.Update has unexpected size % instead of 8", it.type.runtime_size);
+                case "SetPlayerIndex";
+                    assert(it.offset_in_bytes == 80, "SDL_VirtualJoystickDesc.SetPlayerIndex has unexpected offset % instead of 80", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_VirtualJoystickDesc.SetPlayerIndex has unexpected size % instead of 8", it.type.runtime_size);
+                case "Rumble";
+                    assert(it.offset_in_bytes == 88, "SDL_VirtualJoystickDesc.Rumble has unexpected offset % instead of 88", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_VirtualJoystickDesc.Rumble has unexpected size % instead of 8", it.type.runtime_size);
+                case "RumbleTriggers";
+                    assert(it.offset_in_bytes == 96, "SDL_VirtualJoystickDesc.RumbleTriggers has unexpected offset % instead of 96", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_VirtualJoystickDesc.RumbleTriggers has unexpected size % instead of 8", it.type.runtime_size);
+                case "SetLED";
+                    assert(it.offset_in_bytes == 104, "SDL_VirtualJoystickDesc.SetLED has unexpected offset % instead of 104", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_VirtualJoystickDesc.SetLED has unexpected size % instead of 8", it.type.runtime_size);
+                case "SendEffect";
+                    assert(it.offset_in_bytes == 112, "SDL_VirtualJoystickDesc.SendEffect has unexpected offset % instead of 112", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_VirtualJoystickDesc.SendEffect has unexpected size % instead of 8", it.type.runtime_size);
+                case "SetSensorsEnabled";
+                    assert(it.offset_in_bytes == 120, "SDL_VirtualJoystickDesc.SetSensorsEnabled has unexpected offset % instead of 120", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_VirtualJoystickDesc.SetSensorsEnabled has unexpected size % instead of 8", it.type.runtime_size);
+                case "Cleanup";
+                    assert(it.offset_in_bytes == 128, "SDL_VirtualJoystickDesc.Cleanup has unexpected offset % instead of 128", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_VirtualJoystickDesc.Cleanup has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_VirtualJoystickDesc) == 136, "SDL_VirtualJoystickDesc has size % instead of 136", size_of(SDL_VirtualJoystickDesc));
     }
 
     {
-        instance: SDL_GamepadBinding;
-        assert(((cast(*void)(*instance.input_type)) - cast(*void)(*instance)) == 0, "SDL_GamepadBinding.input_type has unexpected offset % instead of 0", ((cast(*void)(*instance.input_type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadBinding.input_type)) == 4, "SDL_GamepadBinding.input_type has unexpected size % instead of 4", size_of(type_of(SDL_GamepadBinding.input_type)));
-        assert(((cast(*void)(*instance.input)) - cast(*void)(*instance)) == 4, "SDL_GamepadBinding.input has unexpected offset % instead of 4", ((cast(*void)(*instance.input)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadBinding.input)) == 12, "SDL_GamepadBinding.input has unexpected size % instead of 12", size_of(type_of(SDL_GamepadBinding.input)));
-        assert(((cast(*void)(*instance.output_type)) - cast(*void)(*instance)) == 16, "SDL_GamepadBinding.output_type has unexpected offset % instead of 16", ((cast(*void)(*instance.output_type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadBinding.output_type)) == 4, "SDL_GamepadBinding.output_type has unexpected size % instead of 4", size_of(type_of(SDL_GamepadBinding.output_type)));
-        assert(((cast(*void)(*instance.output)) - cast(*void)(*instance)) == 20, "SDL_GamepadBinding.output has unexpected offset % instead of 20", ((cast(*void)(*instance.output)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadBinding.output)) == 12, "SDL_GamepadBinding.output has unexpected size % instead of 12", size_of(type_of(SDL_GamepadBinding.output)));
+        info := type_info(SDL_GamepadBinding);
+        for info.members {
+            if it.name == {
+                case "input_type";
+                    assert(it.offset_in_bytes == 0, "SDL_GamepadBinding.input_type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadBinding.input_type has unexpected size % instead of 4", it.type.runtime_size);
+                case "input";
+                    assert(it.offset_in_bytes == 4, "SDL_GamepadBinding.input has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 12, "SDL_GamepadBinding.input has unexpected size % instead of 12", it.type.runtime_size);
+                case "output_type";
+                    assert(it.offset_in_bytes == 16, "SDL_GamepadBinding.output_type has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadBinding.output_type has unexpected size % instead of 4", it.type.runtime_size);
+                case "output";
+                    assert(it.offset_in_bytes == 20, "SDL_GamepadBinding.output has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 12, "SDL_GamepadBinding.output has unexpected size % instead of 12", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GamepadBinding) == 32, "SDL_GamepadBinding has size % instead of 32", size_of(SDL_GamepadBinding));
     }
 
     {
-        instance: SDL_Finger;
-        assert(((cast(*void)(*instance.id)) - cast(*void)(*instance)) == 0, "SDL_Finger.id has unexpected offset % instead of 0", ((cast(*void)(*instance.id)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Finger.id)) == 8, "SDL_Finger.id has unexpected size % instead of 8", size_of(type_of(SDL_Finger.id)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 8, "SDL_Finger.x has unexpected offset % instead of 8", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Finger.x)) == 4, "SDL_Finger.x has unexpected size % instead of 4", size_of(type_of(SDL_Finger.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 12, "SDL_Finger.y has unexpected offset % instead of 12", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Finger.y)) == 4, "SDL_Finger.y has unexpected size % instead of 4", size_of(type_of(SDL_Finger.y)));
-        assert(((cast(*void)(*instance.pressure)) - cast(*void)(*instance)) == 16, "SDL_Finger.pressure has unexpected offset % instead of 16", ((cast(*void)(*instance.pressure)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Finger.pressure)) == 4, "SDL_Finger.pressure has unexpected size % instead of 4", size_of(type_of(SDL_Finger.pressure)));
+        info := type_info(SDL_Finger);
+        for info.members {
+            if it.name == {
+                case "id";
+                    assert(it.offset_in_bytes == 0, "SDL_Finger.id has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_Finger.id has unexpected size % instead of 8", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 8, "SDL_Finger.x has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Finger.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 12, "SDL_Finger.y has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Finger.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "pressure";
+                    assert(it.offset_in_bytes == 16, "SDL_Finger.pressure has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Finger.pressure has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_Finger) == 24, "SDL_Finger has size % instead of 24", size_of(SDL_Finger));
     }
 
     {
-        instance: SDL_CommonEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_CommonEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CommonEvent.type)) == 4, "SDL_CommonEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_CommonEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_CommonEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CommonEvent.reserved)) == 4, "SDL_CommonEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_CommonEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_CommonEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CommonEvent.timestamp)) == 8, "SDL_CommonEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_CommonEvent.timestamp)));
+        info := type_info(SDL_CommonEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_CommonEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_CommonEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_CommonEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_CommonEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_CommonEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_CommonEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_CommonEvent) == 16, "SDL_CommonEvent has size % instead of 16", size_of(SDL_CommonEvent));
     }
 
     {
-        instance: SDL_DisplayEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_DisplayEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayEvent.type)) == 4, "SDL_DisplayEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_DisplayEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_DisplayEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayEvent.reserved)) == 4, "SDL_DisplayEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_DisplayEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_DisplayEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayEvent.timestamp)) == 8, "SDL_DisplayEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_DisplayEvent.timestamp)));
-        assert(((cast(*void)(*instance.displayID)) - cast(*void)(*instance)) == 16, "SDL_DisplayEvent.displayID has unexpected offset % instead of 16", ((cast(*void)(*instance.displayID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayEvent.displayID)) == 4, "SDL_DisplayEvent.displayID has unexpected size % instead of 4", size_of(type_of(SDL_DisplayEvent.displayID)));
-        assert(((cast(*void)(*instance.data1)) - cast(*void)(*instance)) == 20, "SDL_DisplayEvent.data1 has unexpected offset % instead of 20", ((cast(*void)(*instance.data1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayEvent.data1)) == 4, "SDL_DisplayEvent.data1 has unexpected size % instead of 4", size_of(type_of(SDL_DisplayEvent.data1)));
-        assert(((cast(*void)(*instance.data2)) - cast(*void)(*instance)) == 24, "SDL_DisplayEvent.data2 has unexpected offset % instead of 24", ((cast(*void)(*instance.data2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DisplayEvent.data2)) == 4, "SDL_DisplayEvent.data2 has unexpected size % instead of 4", size_of(type_of(SDL_DisplayEvent.data2)));
+        info := type_info(SDL_DisplayEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_DisplayEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_DisplayEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_DisplayEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_DisplayEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "displayID";
+                    assert(it.offset_in_bytes == 16, "SDL_DisplayEvent.displayID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayEvent.displayID has unexpected size % instead of 4", it.type.runtime_size);
+                case "data1";
+                    assert(it.offset_in_bytes == 20, "SDL_DisplayEvent.data1 has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayEvent.data1 has unexpected size % instead of 4", it.type.runtime_size);
+                case "data2";
+                    assert(it.offset_in_bytes == 24, "SDL_DisplayEvent.data2 has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DisplayEvent.data2 has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_DisplayEvent) == 32, "SDL_DisplayEvent has size % instead of 32", size_of(SDL_DisplayEvent));
     }
 
     {
-        instance: SDL_WindowEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_WindowEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_WindowEvent.type)) == 4, "SDL_WindowEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_WindowEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_WindowEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_WindowEvent.reserved)) == 4, "SDL_WindowEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_WindowEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_WindowEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_WindowEvent.timestamp)) == 8, "SDL_WindowEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_WindowEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_WindowEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_WindowEvent.windowID)) == 4, "SDL_WindowEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_WindowEvent.windowID)));
-        assert(((cast(*void)(*instance.data1)) - cast(*void)(*instance)) == 20, "SDL_WindowEvent.data1 has unexpected offset % instead of 20", ((cast(*void)(*instance.data1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_WindowEvent.data1)) == 4, "SDL_WindowEvent.data1 has unexpected size % instead of 4", size_of(type_of(SDL_WindowEvent.data1)));
-        assert(((cast(*void)(*instance.data2)) - cast(*void)(*instance)) == 24, "SDL_WindowEvent.data2 has unexpected offset % instead of 24", ((cast(*void)(*instance.data2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_WindowEvent.data2)) == 4, "SDL_WindowEvent.data2 has unexpected size % instead of 4", size_of(type_of(SDL_WindowEvent.data2)));
+        info := type_info(SDL_WindowEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_WindowEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_WindowEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_WindowEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_WindowEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_WindowEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_WindowEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_WindowEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_WindowEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "data1";
+                    assert(it.offset_in_bytes == 20, "SDL_WindowEvent.data1 has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_WindowEvent.data1 has unexpected size % instead of 4", it.type.runtime_size);
+                case "data2";
+                    assert(it.offset_in_bytes == 24, "SDL_WindowEvent.data2 has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_WindowEvent.data2 has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_WindowEvent) == 32, "SDL_WindowEvent has size % instead of 32", size_of(SDL_WindowEvent));
     }
 
     {
-        instance: SDL_KeyboardDeviceEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_KeyboardDeviceEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardDeviceEvent.type)) == 4, "SDL_KeyboardDeviceEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_KeyboardDeviceEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_KeyboardDeviceEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardDeviceEvent.reserved)) == 4, "SDL_KeyboardDeviceEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_KeyboardDeviceEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_KeyboardDeviceEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardDeviceEvent.timestamp)) == 8, "SDL_KeyboardDeviceEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_KeyboardDeviceEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_KeyboardDeviceEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardDeviceEvent.which)) == 4, "SDL_KeyboardDeviceEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_KeyboardDeviceEvent.which)));
+        info := type_info(SDL_KeyboardDeviceEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_KeyboardDeviceEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_KeyboardDeviceEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_KeyboardDeviceEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_KeyboardDeviceEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_KeyboardDeviceEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_KeyboardDeviceEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_KeyboardDeviceEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_KeyboardDeviceEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_KeyboardDeviceEvent) == 24, "SDL_KeyboardDeviceEvent has size % instead of 24", size_of(SDL_KeyboardDeviceEvent));
     }
 
     {
-        instance: SDL_KeyboardEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_KeyboardEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardEvent.type)) == 4, "SDL_KeyboardEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_KeyboardEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_KeyboardEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardEvent.reserved)) == 4, "SDL_KeyboardEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_KeyboardEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_KeyboardEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardEvent.timestamp)) == 8, "SDL_KeyboardEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_KeyboardEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_KeyboardEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardEvent.windowID)) == 4, "SDL_KeyboardEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_KeyboardEvent.windowID)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 20, "SDL_KeyboardEvent.which has unexpected offset % instead of 20", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardEvent.which)) == 4, "SDL_KeyboardEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_KeyboardEvent.which)));
-        assert(((cast(*void)(*instance.scancode)) - cast(*void)(*instance)) == 24, "SDL_KeyboardEvent.scancode has unexpected offset % instead of 24", ((cast(*void)(*instance.scancode)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardEvent.scancode)) == 4, "SDL_KeyboardEvent.scancode has unexpected size % instead of 4", size_of(type_of(SDL_KeyboardEvent.scancode)));
-        assert(((cast(*void)(*instance.key)) - cast(*void)(*instance)) == 28, "SDL_KeyboardEvent.key has unexpected offset % instead of 28", ((cast(*void)(*instance.key)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardEvent.key)) == 4, "SDL_KeyboardEvent.key has unexpected size % instead of 4", size_of(type_of(SDL_KeyboardEvent.key)));
-        assert(((cast(*void)(*instance.mod)) - cast(*void)(*instance)) == 32, "SDL_KeyboardEvent.mod has unexpected offset % instead of 32", ((cast(*void)(*instance.mod)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardEvent.mod)) == 2, "SDL_KeyboardEvent.mod has unexpected size % instead of 2", size_of(type_of(SDL_KeyboardEvent.mod)));
-        assert(((cast(*void)(*instance.raw)) - cast(*void)(*instance)) == 34, "SDL_KeyboardEvent.raw has unexpected offset % instead of 34", ((cast(*void)(*instance.raw)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardEvent.raw)) == 2, "SDL_KeyboardEvent.raw has unexpected size % instead of 2", size_of(type_of(SDL_KeyboardEvent.raw)));
-        assert(((cast(*void)(*instance.down)) - cast(*void)(*instance)) == 36, "SDL_KeyboardEvent.down has unexpected offset % instead of 36", ((cast(*void)(*instance.down)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardEvent.down)) == 1, "SDL_KeyboardEvent.down has unexpected size % instead of 1", size_of(type_of(SDL_KeyboardEvent.down)));
-        assert(((cast(*void)(*instance.repeat)) - cast(*void)(*instance)) == 37, "SDL_KeyboardEvent.repeat has unexpected offset % instead of 37", ((cast(*void)(*instance.repeat)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_KeyboardEvent.repeat)) == 1, "SDL_KeyboardEvent.repeat has unexpected size % instead of 1", size_of(type_of(SDL_KeyboardEvent.repeat)));
+        info := type_info(SDL_KeyboardEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_KeyboardEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_KeyboardEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_KeyboardEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_KeyboardEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_KeyboardEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_KeyboardEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_KeyboardEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_KeyboardEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 20, "SDL_KeyboardEvent.which has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_KeyboardEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "scancode";
+                    assert(it.offset_in_bytes == 24, "SDL_KeyboardEvent.scancode has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_KeyboardEvent.scancode has unexpected size % instead of 4", it.type.runtime_size);
+                case "key";
+                    assert(it.offset_in_bytes == 28, "SDL_KeyboardEvent.key has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_KeyboardEvent.key has unexpected size % instead of 4", it.type.runtime_size);
+                case "mod";
+                    assert(it.offset_in_bytes == 32, "SDL_KeyboardEvent.mod has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_KeyboardEvent.mod has unexpected size % instead of 2", it.type.runtime_size);
+                case "raw";
+                    assert(it.offset_in_bytes == 34, "SDL_KeyboardEvent.raw has unexpected offset % instead of 34", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_KeyboardEvent.raw has unexpected size % instead of 2", it.type.runtime_size);
+                case "down";
+                    assert(it.offset_in_bytes == 36, "SDL_KeyboardEvent.down has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_KeyboardEvent.down has unexpected size % instead of 1", it.type.runtime_size);
+                case "repeat";
+                    assert(it.offset_in_bytes == 37, "SDL_KeyboardEvent.repeat has unexpected offset % instead of 37", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_KeyboardEvent.repeat has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_KeyboardEvent) == 40, "SDL_KeyboardEvent has size % instead of 40", size_of(SDL_KeyboardEvent));
     }
 
     {
-        instance: SDL_TextEditingEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_TextEditingEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingEvent.type)) == 4, "SDL_TextEditingEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_TextEditingEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_TextEditingEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingEvent.reserved)) == 4, "SDL_TextEditingEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_TextEditingEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_TextEditingEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingEvent.timestamp)) == 8, "SDL_TextEditingEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_TextEditingEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_TextEditingEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingEvent.windowID)) == 4, "SDL_TextEditingEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_TextEditingEvent.windowID)));
-        assert(((cast(*void)(*instance.text)) - cast(*void)(*instance)) == 24, "SDL_TextEditingEvent.text has unexpected offset % instead of 24", ((cast(*void)(*instance.text)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingEvent.text)) == 8, "SDL_TextEditingEvent.text has unexpected size % instead of 8", size_of(type_of(SDL_TextEditingEvent.text)));
-        assert(((cast(*void)(*instance.start)) - cast(*void)(*instance)) == 32, "SDL_TextEditingEvent.start has unexpected offset % instead of 32", ((cast(*void)(*instance.start)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingEvent.start)) == 4, "SDL_TextEditingEvent.start has unexpected size % instead of 4", size_of(type_of(SDL_TextEditingEvent.start)));
-        assert(((cast(*void)(*instance.length)) - cast(*void)(*instance)) == 36, "SDL_TextEditingEvent.length has unexpected offset % instead of 36", ((cast(*void)(*instance.length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingEvent.length)) == 4, "SDL_TextEditingEvent.length has unexpected size % instead of 4", size_of(type_of(SDL_TextEditingEvent.length)));
+        info := type_info(SDL_TextEditingEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_TextEditingEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextEditingEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_TextEditingEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextEditingEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_TextEditingEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_TextEditingEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_TextEditingEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextEditingEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "text";
+                    assert(it.offset_in_bytes == 24, "SDL_TextEditingEvent.text has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_TextEditingEvent.text has unexpected size % instead of 8", it.type.runtime_size);
+                case "start";
+                    assert(it.offset_in_bytes == 32, "SDL_TextEditingEvent.start has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextEditingEvent.start has unexpected size % instead of 4", it.type.runtime_size);
+                case "length";
+                    assert(it.offset_in_bytes == 36, "SDL_TextEditingEvent.length has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextEditingEvent.length has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_TextEditingEvent) == 40, "SDL_TextEditingEvent has size % instead of 40", size_of(SDL_TextEditingEvent));
     }
 
     {
-        instance: SDL_TextEditingCandidatesEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_TextEditingCandidatesEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingCandidatesEvent.type)) == 4, "SDL_TextEditingCandidatesEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_TextEditingCandidatesEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_TextEditingCandidatesEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingCandidatesEvent.reserved)) == 4, "SDL_TextEditingCandidatesEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_TextEditingCandidatesEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_TextEditingCandidatesEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingCandidatesEvent.timestamp)) == 8, "SDL_TextEditingCandidatesEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_TextEditingCandidatesEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_TextEditingCandidatesEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingCandidatesEvent.windowID)) == 4, "SDL_TextEditingCandidatesEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_TextEditingCandidatesEvent.windowID)));
-        assert(((cast(*void)(*instance.candidates)) - cast(*void)(*instance)) == 24, "SDL_TextEditingCandidatesEvent.candidates has unexpected offset % instead of 24", ((cast(*void)(*instance.candidates)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingCandidatesEvent.candidates)) == 8, "SDL_TextEditingCandidatesEvent.candidates has unexpected size % instead of 8", size_of(type_of(SDL_TextEditingCandidatesEvent.candidates)));
-        assert(((cast(*void)(*instance.num_candidates)) - cast(*void)(*instance)) == 32, "SDL_TextEditingCandidatesEvent.num_candidates has unexpected offset % instead of 32", ((cast(*void)(*instance.num_candidates)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingCandidatesEvent.num_candidates)) == 4, "SDL_TextEditingCandidatesEvent.num_candidates has unexpected size % instead of 4", size_of(type_of(SDL_TextEditingCandidatesEvent.num_candidates)));
-        assert(((cast(*void)(*instance.selected_candidate)) - cast(*void)(*instance)) == 36, "SDL_TextEditingCandidatesEvent.selected_candidate has unexpected offset % instead of 36", ((cast(*void)(*instance.selected_candidate)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingCandidatesEvent.selected_candidate)) == 4, "SDL_TextEditingCandidatesEvent.selected_candidate has unexpected size % instead of 4", size_of(type_of(SDL_TextEditingCandidatesEvent.selected_candidate)));
-        assert(((cast(*void)(*instance.horizontal)) - cast(*void)(*instance)) == 40, "SDL_TextEditingCandidatesEvent.horizontal has unexpected offset % instead of 40", ((cast(*void)(*instance.horizontal)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingCandidatesEvent.horizontal)) == 1, "SDL_TextEditingCandidatesEvent.horizontal has unexpected size % instead of 1", size_of(type_of(SDL_TextEditingCandidatesEvent.horizontal)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 41, "SDL_TextEditingCandidatesEvent.padding1 has unexpected offset % instead of 41", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingCandidatesEvent.padding1)) == 1, "SDL_TextEditingCandidatesEvent.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_TextEditingCandidatesEvent.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 42, "SDL_TextEditingCandidatesEvent.padding2 has unexpected offset % instead of 42", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingCandidatesEvent.padding2)) == 1, "SDL_TextEditingCandidatesEvent.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_TextEditingCandidatesEvent.padding2)));
-        assert(((cast(*void)(*instance.padding3)) - cast(*void)(*instance)) == 43, "SDL_TextEditingCandidatesEvent.padding3 has unexpected offset % instead of 43", ((cast(*void)(*instance.padding3)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextEditingCandidatesEvent.padding3)) == 1, "SDL_TextEditingCandidatesEvent.padding3 has unexpected size % instead of 1", size_of(type_of(SDL_TextEditingCandidatesEvent.padding3)));
+        info := type_info(SDL_TextEditingCandidatesEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_TextEditingCandidatesEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextEditingCandidatesEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_TextEditingCandidatesEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextEditingCandidatesEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_TextEditingCandidatesEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_TextEditingCandidatesEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_TextEditingCandidatesEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextEditingCandidatesEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "candidates";
+                    assert(it.offset_in_bytes == 24, "SDL_TextEditingCandidatesEvent.candidates has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_TextEditingCandidatesEvent.candidates has unexpected size % instead of 8", it.type.runtime_size);
+                case "num_candidates";
+                    assert(it.offset_in_bytes == 32, "SDL_TextEditingCandidatesEvent.num_candidates has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextEditingCandidatesEvent.num_candidates has unexpected size % instead of 4", it.type.runtime_size);
+                case "selected_candidate";
+                    assert(it.offset_in_bytes == 36, "SDL_TextEditingCandidatesEvent.selected_candidate has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextEditingCandidatesEvent.selected_candidate has unexpected size % instead of 4", it.type.runtime_size);
+                case "horizontal";
+                    assert(it.offset_in_bytes == 40, "SDL_TextEditingCandidatesEvent.horizontal has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_TextEditingCandidatesEvent.horizontal has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 41, "SDL_TextEditingCandidatesEvent.padding1 has unexpected offset % instead of 41", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_TextEditingCandidatesEvent.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 42, "SDL_TextEditingCandidatesEvent.padding2 has unexpected offset % instead of 42", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_TextEditingCandidatesEvent.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding3";
+                    assert(it.offset_in_bytes == 43, "SDL_TextEditingCandidatesEvent.padding3 has unexpected offset % instead of 43", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_TextEditingCandidatesEvent.padding3 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_TextEditingCandidatesEvent) == 48, "SDL_TextEditingCandidatesEvent has size % instead of 48", size_of(SDL_TextEditingCandidatesEvent));
     }
 
     {
-        instance: SDL_TextInputEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_TextInputEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextInputEvent.type)) == 4, "SDL_TextInputEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_TextInputEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_TextInputEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextInputEvent.reserved)) == 4, "SDL_TextInputEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_TextInputEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_TextInputEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextInputEvent.timestamp)) == 8, "SDL_TextInputEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_TextInputEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_TextInputEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextInputEvent.windowID)) == 4, "SDL_TextInputEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_TextInputEvent.windowID)));
-        assert(((cast(*void)(*instance.text)) - cast(*void)(*instance)) == 24, "SDL_TextInputEvent.text has unexpected offset % instead of 24", ((cast(*void)(*instance.text)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TextInputEvent.text)) == 8, "SDL_TextInputEvent.text has unexpected size % instead of 8", size_of(type_of(SDL_TextInputEvent.text)));
+        info := type_info(SDL_TextInputEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_TextInputEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextInputEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_TextInputEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextInputEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_TextInputEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_TextInputEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_TextInputEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TextInputEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "text";
+                    assert(it.offset_in_bytes == 24, "SDL_TextInputEvent.text has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_TextInputEvent.text has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_TextInputEvent) == 32, "SDL_TextInputEvent has size % instead of 32", size_of(SDL_TextInputEvent));
     }
 
     {
-        instance: SDL_MouseDeviceEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_MouseDeviceEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseDeviceEvent.type)) == 4, "SDL_MouseDeviceEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_MouseDeviceEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_MouseDeviceEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseDeviceEvent.reserved)) == 4, "SDL_MouseDeviceEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_MouseDeviceEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_MouseDeviceEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseDeviceEvent.timestamp)) == 8, "SDL_MouseDeviceEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_MouseDeviceEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_MouseDeviceEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseDeviceEvent.which)) == 4, "SDL_MouseDeviceEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_MouseDeviceEvent.which)));
+        info := type_info(SDL_MouseDeviceEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_MouseDeviceEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseDeviceEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_MouseDeviceEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseDeviceEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_MouseDeviceEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_MouseDeviceEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_MouseDeviceEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseDeviceEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_MouseDeviceEvent) == 24, "SDL_MouseDeviceEvent has size % instead of 24", size_of(SDL_MouseDeviceEvent));
     }
 
     {
-        instance: SDL_MouseMotionEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_MouseMotionEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseMotionEvent.type)) == 4, "SDL_MouseMotionEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_MouseMotionEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_MouseMotionEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseMotionEvent.reserved)) == 4, "SDL_MouseMotionEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_MouseMotionEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_MouseMotionEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseMotionEvent.timestamp)) == 8, "SDL_MouseMotionEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_MouseMotionEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_MouseMotionEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseMotionEvent.windowID)) == 4, "SDL_MouseMotionEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_MouseMotionEvent.windowID)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 20, "SDL_MouseMotionEvent.which has unexpected offset % instead of 20", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseMotionEvent.which)) == 4, "SDL_MouseMotionEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_MouseMotionEvent.which)));
-        assert(((cast(*void)(*instance.state)) - cast(*void)(*instance)) == 24, "SDL_MouseMotionEvent.state has unexpected offset % instead of 24", ((cast(*void)(*instance.state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseMotionEvent.state)) == 4, "SDL_MouseMotionEvent.state has unexpected size % instead of 4", size_of(type_of(SDL_MouseMotionEvent.state)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 28, "SDL_MouseMotionEvent.x has unexpected offset % instead of 28", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseMotionEvent.x)) == 4, "SDL_MouseMotionEvent.x has unexpected size % instead of 4", size_of(type_of(SDL_MouseMotionEvent.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 32, "SDL_MouseMotionEvent.y has unexpected offset % instead of 32", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseMotionEvent.y)) == 4, "SDL_MouseMotionEvent.y has unexpected size % instead of 4", size_of(type_of(SDL_MouseMotionEvent.y)));
-        assert(((cast(*void)(*instance.xrel)) - cast(*void)(*instance)) == 36, "SDL_MouseMotionEvent.xrel has unexpected offset % instead of 36", ((cast(*void)(*instance.xrel)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseMotionEvent.xrel)) == 4, "SDL_MouseMotionEvent.xrel has unexpected size % instead of 4", size_of(type_of(SDL_MouseMotionEvent.xrel)));
-        assert(((cast(*void)(*instance.yrel)) - cast(*void)(*instance)) == 40, "SDL_MouseMotionEvent.yrel has unexpected offset % instead of 40", ((cast(*void)(*instance.yrel)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseMotionEvent.yrel)) == 4, "SDL_MouseMotionEvent.yrel has unexpected size % instead of 4", size_of(type_of(SDL_MouseMotionEvent.yrel)));
+        info := type_info(SDL_MouseMotionEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_MouseMotionEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseMotionEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_MouseMotionEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseMotionEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_MouseMotionEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_MouseMotionEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_MouseMotionEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseMotionEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 20, "SDL_MouseMotionEvent.which has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseMotionEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "state";
+                    assert(it.offset_in_bytes == 24, "SDL_MouseMotionEvent.state has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseMotionEvent.state has unexpected size % instead of 4", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 28, "SDL_MouseMotionEvent.x has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseMotionEvent.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 32, "SDL_MouseMotionEvent.y has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseMotionEvent.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "xrel";
+                    assert(it.offset_in_bytes == 36, "SDL_MouseMotionEvent.xrel has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseMotionEvent.xrel has unexpected size % instead of 4", it.type.runtime_size);
+                case "yrel";
+                    assert(it.offset_in_bytes == 40, "SDL_MouseMotionEvent.yrel has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseMotionEvent.yrel has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_MouseMotionEvent) == 48, "SDL_MouseMotionEvent has size % instead of 48", size_of(SDL_MouseMotionEvent));
     }
 
     {
-        instance: SDL_MouseButtonEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_MouseButtonEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseButtonEvent.type)) == 4, "SDL_MouseButtonEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_MouseButtonEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_MouseButtonEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseButtonEvent.reserved)) == 4, "SDL_MouseButtonEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_MouseButtonEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_MouseButtonEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseButtonEvent.timestamp)) == 8, "SDL_MouseButtonEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_MouseButtonEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_MouseButtonEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseButtonEvent.windowID)) == 4, "SDL_MouseButtonEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_MouseButtonEvent.windowID)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 20, "SDL_MouseButtonEvent.which has unexpected offset % instead of 20", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseButtonEvent.which)) == 4, "SDL_MouseButtonEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_MouseButtonEvent.which)));
-        assert(((cast(*void)(*instance.button)) - cast(*void)(*instance)) == 24, "SDL_MouseButtonEvent.button has unexpected offset % instead of 24", ((cast(*void)(*instance.button)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseButtonEvent.button)) == 1, "SDL_MouseButtonEvent.button has unexpected size % instead of 1", size_of(type_of(SDL_MouseButtonEvent.button)));
-        assert(((cast(*void)(*instance.down)) - cast(*void)(*instance)) == 25, "SDL_MouseButtonEvent.down has unexpected offset % instead of 25", ((cast(*void)(*instance.down)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseButtonEvent.down)) == 1, "SDL_MouseButtonEvent.down has unexpected size % instead of 1", size_of(type_of(SDL_MouseButtonEvent.down)));
-        assert(((cast(*void)(*instance.clicks)) - cast(*void)(*instance)) == 26, "SDL_MouseButtonEvent.clicks has unexpected offset % instead of 26", ((cast(*void)(*instance.clicks)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseButtonEvent.clicks)) == 1, "SDL_MouseButtonEvent.clicks has unexpected size % instead of 1", size_of(type_of(SDL_MouseButtonEvent.clicks)));
-        assert(((cast(*void)(*instance.padding)) - cast(*void)(*instance)) == 27, "SDL_MouseButtonEvent.padding has unexpected offset % instead of 27", ((cast(*void)(*instance.padding)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseButtonEvent.padding)) == 1, "SDL_MouseButtonEvent.padding has unexpected size % instead of 1", size_of(type_of(SDL_MouseButtonEvent.padding)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 28, "SDL_MouseButtonEvent.x has unexpected offset % instead of 28", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseButtonEvent.x)) == 4, "SDL_MouseButtonEvent.x has unexpected size % instead of 4", size_of(type_of(SDL_MouseButtonEvent.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 32, "SDL_MouseButtonEvent.y has unexpected offset % instead of 32", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseButtonEvent.y)) == 4, "SDL_MouseButtonEvent.y has unexpected size % instead of 4", size_of(type_of(SDL_MouseButtonEvent.y)));
+        info := type_info(SDL_MouseButtonEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_MouseButtonEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseButtonEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_MouseButtonEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseButtonEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_MouseButtonEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_MouseButtonEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_MouseButtonEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseButtonEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 20, "SDL_MouseButtonEvent.which has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseButtonEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "button";
+                    assert(it.offset_in_bytes == 24, "SDL_MouseButtonEvent.button has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_MouseButtonEvent.button has unexpected size % instead of 1", it.type.runtime_size);
+                case "down";
+                    assert(it.offset_in_bytes == 25, "SDL_MouseButtonEvent.down has unexpected offset % instead of 25", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_MouseButtonEvent.down has unexpected size % instead of 1", it.type.runtime_size);
+                case "clicks";
+                    assert(it.offset_in_bytes == 26, "SDL_MouseButtonEvent.clicks has unexpected offset % instead of 26", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_MouseButtonEvent.clicks has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding";
+                    assert(it.offset_in_bytes == 27, "SDL_MouseButtonEvent.padding has unexpected offset % instead of 27", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_MouseButtonEvent.padding has unexpected size % instead of 1", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 28, "SDL_MouseButtonEvent.x has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseButtonEvent.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 32, "SDL_MouseButtonEvent.y has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseButtonEvent.y has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_MouseButtonEvent) == 40, "SDL_MouseButtonEvent has size % instead of 40", size_of(SDL_MouseButtonEvent));
     }
 
     {
-        instance: SDL_MouseWheelEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_MouseWheelEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseWheelEvent.type)) == 4, "SDL_MouseWheelEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_MouseWheelEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_MouseWheelEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseWheelEvent.reserved)) == 4, "SDL_MouseWheelEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_MouseWheelEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_MouseWheelEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseWheelEvent.timestamp)) == 8, "SDL_MouseWheelEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_MouseWheelEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_MouseWheelEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseWheelEvent.windowID)) == 4, "SDL_MouseWheelEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_MouseWheelEvent.windowID)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 20, "SDL_MouseWheelEvent.which has unexpected offset % instead of 20", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseWheelEvent.which)) == 4, "SDL_MouseWheelEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_MouseWheelEvent.which)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 24, "SDL_MouseWheelEvent.x has unexpected offset % instead of 24", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseWheelEvent.x)) == 4, "SDL_MouseWheelEvent.x has unexpected size % instead of 4", size_of(type_of(SDL_MouseWheelEvent.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 28, "SDL_MouseWheelEvent.y has unexpected offset % instead of 28", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseWheelEvent.y)) == 4, "SDL_MouseWheelEvent.y has unexpected size % instead of 4", size_of(type_of(SDL_MouseWheelEvent.y)));
-        assert(((cast(*void)(*instance.direction)) - cast(*void)(*instance)) == 32, "SDL_MouseWheelEvent.direction has unexpected offset % instead of 32", ((cast(*void)(*instance.direction)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseWheelEvent.direction)) == 4, "SDL_MouseWheelEvent.direction has unexpected size % instead of 4", size_of(type_of(SDL_MouseWheelEvent.direction)));
-        assert(((cast(*void)(*instance.mouse_x)) - cast(*void)(*instance)) == 36, "SDL_MouseWheelEvent.mouse_x has unexpected offset % instead of 36", ((cast(*void)(*instance.mouse_x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseWheelEvent.mouse_x)) == 4, "SDL_MouseWheelEvent.mouse_x has unexpected size % instead of 4", size_of(type_of(SDL_MouseWheelEvent.mouse_x)));
-        assert(((cast(*void)(*instance.mouse_y)) - cast(*void)(*instance)) == 40, "SDL_MouseWheelEvent.mouse_y has unexpected offset % instead of 40", ((cast(*void)(*instance.mouse_y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MouseWheelEvent.mouse_y)) == 4, "SDL_MouseWheelEvent.mouse_y has unexpected size % instead of 4", size_of(type_of(SDL_MouseWheelEvent.mouse_y)));
+        info := type_info(SDL_MouseWheelEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_MouseWheelEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseWheelEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_MouseWheelEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseWheelEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_MouseWheelEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_MouseWheelEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_MouseWheelEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseWheelEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 20, "SDL_MouseWheelEvent.which has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseWheelEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 24, "SDL_MouseWheelEvent.x has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseWheelEvent.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 28, "SDL_MouseWheelEvent.y has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseWheelEvent.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "direction";
+                    assert(it.offset_in_bytes == 32, "SDL_MouseWheelEvent.direction has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseWheelEvent.direction has unexpected size % instead of 4", it.type.runtime_size);
+                case "mouse_x";
+                    assert(it.offset_in_bytes == 36, "SDL_MouseWheelEvent.mouse_x has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseWheelEvent.mouse_x has unexpected size % instead of 4", it.type.runtime_size);
+                case "mouse_y";
+                    assert(it.offset_in_bytes == 40, "SDL_MouseWheelEvent.mouse_y has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MouseWheelEvent.mouse_y has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_MouseWheelEvent) == 48, "SDL_MouseWheelEvent has size % instead of 48", size_of(SDL_MouseWheelEvent));
     }
 
     {
-        instance: SDL_JoyAxisEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_JoyAxisEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyAxisEvent.type)) == 4, "SDL_JoyAxisEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_JoyAxisEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_JoyAxisEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyAxisEvent.reserved)) == 4, "SDL_JoyAxisEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_JoyAxisEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_JoyAxisEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyAxisEvent.timestamp)) == 8, "SDL_JoyAxisEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_JoyAxisEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_JoyAxisEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyAxisEvent.which)) == 4, "SDL_JoyAxisEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_JoyAxisEvent.which)));
-        assert(((cast(*void)(*instance.axis)) - cast(*void)(*instance)) == 20, "SDL_JoyAxisEvent.axis has unexpected offset % instead of 20", ((cast(*void)(*instance.axis)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyAxisEvent.axis)) == 1, "SDL_JoyAxisEvent.axis has unexpected size % instead of 1", size_of(type_of(SDL_JoyAxisEvent.axis)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 21, "SDL_JoyAxisEvent.padding1 has unexpected offset % instead of 21", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyAxisEvent.padding1)) == 1, "SDL_JoyAxisEvent.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_JoyAxisEvent.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 22, "SDL_JoyAxisEvent.padding2 has unexpected offset % instead of 22", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyAxisEvent.padding2)) == 1, "SDL_JoyAxisEvent.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_JoyAxisEvent.padding2)));
-        assert(((cast(*void)(*instance.padding3)) - cast(*void)(*instance)) == 23, "SDL_JoyAxisEvent.padding3 has unexpected offset % instead of 23", ((cast(*void)(*instance.padding3)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyAxisEvent.padding3)) == 1, "SDL_JoyAxisEvent.padding3 has unexpected size % instead of 1", size_of(type_of(SDL_JoyAxisEvent.padding3)));
-        assert(((cast(*void)(*instance.value)) - cast(*void)(*instance)) == 24, "SDL_JoyAxisEvent.value has unexpected offset % instead of 24", ((cast(*void)(*instance.value)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyAxisEvent.value)) == 2, "SDL_JoyAxisEvent.value has unexpected size % instead of 2", size_of(type_of(SDL_JoyAxisEvent.value)));
-        assert(((cast(*void)(*instance.padding4)) - cast(*void)(*instance)) == 26, "SDL_JoyAxisEvent.padding4 has unexpected offset % instead of 26", ((cast(*void)(*instance.padding4)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyAxisEvent.padding4)) == 2, "SDL_JoyAxisEvent.padding4 has unexpected size % instead of 2", size_of(type_of(SDL_JoyAxisEvent.padding4)));
+        info := type_info(SDL_JoyAxisEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_JoyAxisEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyAxisEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_JoyAxisEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyAxisEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_JoyAxisEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_JoyAxisEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_JoyAxisEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyAxisEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "axis";
+                    assert(it.offset_in_bytes == 20, "SDL_JoyAxisEvent.axis has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyAxisEvent.axis has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 21, "SDL_JoyAxisEvent.padding1 has unexpected offset % instead of 21", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyAxisEvent.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 22, "SDL_JoyAxisEvent.padding2 has unexpected offset % instead of 22", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyAxisEvent.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding3";
+                    assert(it.offset_in_bytes == 23, "SDL_JoyAxisEvent.padding3 has unexpected offset % instead of 23", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyAxisEvent.padding3 has unexpected size % instead of 1", it.type.runtime_size);
+                case "value";
+                    assert(it.offset_in_bytes == 24, "SDL_JoyAxisEvent.value has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_JoyAxisEvent.value has unexpected size % instead of 2", it.type.runtime_size);
+                case "padding4";
+                    assert(it.offset_in_bytes == 26, "SDL_JoyAxisEvent.padding4 has unexpected offset % instead of 26", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_JoyAxisEvent.padding4 has unexpected size % instead of 2", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_JoyAxisEvent) == 32, "SDL_JoyAxisEvent has size % instead of 32", size_of(SDL_JoyAxisEvent));
     }
 
     {
-        instance: SDL_JoyBallEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_JoyBallEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBallEvent.type)) == 4, "SDL_JoyBallEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_JoyBallEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_JoyBallEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBallEvent.reserved)) == 4, "SDL_JoyBallEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_JoyBallEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_JoyBallEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBallEvent.timestamp)) == 8, "SDL_JoyBallEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_JoyBallEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_JoyBallEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBallEvent.which)) == 4, "SDL_JoyBallEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_JoyBallEvent.which)));
-        assert(((cast(*void)(*instance.ball)) - cast(*void)(*instance)) == 20, "SDL_JoyBallEvent.ball has unexpected offset % instead of 20", ((cast(*void)(*instance.ball)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBallEvent.ball)) == 1, "SDL_JoyBallEvent.ball has unexpected size % instead of 1", size_of(type_of(SDL_JoyBallEvent.ball)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 21, "SDL_JoyBallEvent.padding1 has unexpected offset % instead of 21", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBallEvent.padding1)) == 1, "SDL_JoyBallEvent.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_JoyBallEvent.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 22, "SDL_JoyBallEvent.padding2 has unexpected offset % instead of 22", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBallEvent.padding2)) == 1, "SDL_JoyBallEvent.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_JoyBallEvent.padding2)));
-        assert(((cast(*void)(*instance.padding3)) - cast(*void)(*instance)) == 23, "SDL_JoyBallEvent.padding3 has unexpected offset % instead of 23", ((cast(*void)(*instance.padding3)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBallEvent.padding3)) == 1, "SDL_JoyBallEvent.padding3 has unexpected size % instead of 1", size_of(type_of(SDL_JoyBallEvent.padding3)));
-        assert(((cast(*void)(*instance.xrel)) - cast(*void)(*instance)) == 24, "SDL_JoyBallEvent.xrel has unexpected offset % instead of 24", ((cast(*void)(*instance.xrel)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBallEvent.xrel)) == 2, "SDL_JoyBallEvent.xrel has unexpected size % instead of 2", size_of(type_of(SDL_JoyBallEvent.xrel)));
-        assert(((cast(*void)(*instance.yrel)) - cast(*void)(*instance)) == 26, "SDL_JoyBallEvent.yrel has unexpected offset % instead of 26", ((cast(*void)(*instance.yrel)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBallEvent.yrel)) == 2, "SDL_JoyBallEvent.yrel has unexpected size % instead of 2", size_of(type_of(SDL_JoyBallEvent.yrel)));
+        info := type_info(SDL_JoyBallEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_JoyBallEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyBallEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_JoyBallEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyBallEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_JoyBallEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_JoyBallEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_JoyBallEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyBallEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "ball";
+                    assert(it.offset_in_bytes == 20, "SDL_JoyBallEvent.ball has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyBallEvent.ball has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 21, "SDL_JoyBallEvent.padding1 has unexpected offset % instead of 21", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyBallEvent.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 22, "SDL_JoyBallEvent.padding2 has unexpected offset % instead of 22", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyBallEvent.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding3";
+                    assert(it.offset_in_bytes == 23, "SDL_JoyBallEvent.padding3 has unexpected offset % instead of 23", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyBallEvent.padding3 has unexpected size % instead of 1", it.type.runtime_size);
+                case "xrel";
+                    assert(it.offset_in_bytes == 24, "SDL_JoyBallEvent.xrel has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_JoyBallEvent.xrel has unexpected size % instead of 2", it.type.runtime_size);
+                case "yrel";
+                    assert(it.offset_in_bytes == 26, "SDL_JoyBallEvent.yrel has unexpected offset % instead of 26", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_JoyBallEvent.yrel has unexpected size % instead of 2", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_JoyBallEvent) == 32, "SDL_JoyBallEvent has size % instead of 32", size_of(SDL_JoyBallEvent));
     }
 
     {
-        instance: SDL_JoyHatEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_JoyHatEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyHatEvent.type)) == 4, "SDL_JoyHatEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_JoyHatEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_JoyHatEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyHatEvent.reserved)) == 4, "SDL_JoyHatEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_JoyHatEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_JoyHatEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyHatEvent.timestamp)) == 8, "SDL_JoyHatEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_JoyHatEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_JoyHatEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyHatEvent.which)) == 4, "SDL_JoyHatEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_JoyHatEvent.which)));
-        assert(((cast(*void)(*instance.hat)) - cast(*void)(*instance)) == 20, "SDL_JoyHatEvent.hat has unexpected offset % instead of 20", ((cast(*void)(*instance.hat)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyHatEvent.hat)) == 1, "SDL_JoyHatEvent.hat has unexpected size % instead of 1", size_of(type_of(SDL_JoyHatEvent.hat)));
-        assert(((cast(*void)(*instance.value)) - cast(*void)(*instance)) == 21, "SDL_JoyHatEvent.value has unexpected offset % instead of 21", ((cast(*void)(*instance.value)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyHatEvent.value)) == 1, "SDL_JoyHatEvent.value has unexpected size % instead of 1", size_of(type_of(SDL_JoyHatEvent.value)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 22, "SDL_JoyHatEvent.padding1 has unexpected offset % instead of 22", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyHatEvent.padding1)) == 1, "SDL_JoyHatEvent.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_JoyHatEvent.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 23, "SDL_JoyHatEvent.padding2 has unexpected offset % instead of 23", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyHatEvent.padding2)) == 1, "SDL_JoyHatEvent.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_JoyHatEvent.padding2)));
+        info := type_info(SDL_JoyHatEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_JoyHatEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyHatEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_JoyHatEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyHatEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_JoyHatEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_JoyHatEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_JoyHatEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyHatEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "hat";
+                    assert(it.offset_in_bytes == 20, "SDL_JoyHatEvent.hat has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyHatEvent.hat has unexpected size % instead of 1", it.type.runtime_size);
+                case "value";
+                    assert(it.offset_in_bytes == 21, "SDL_JoyHatEvent.value has unexpected offset % instead of 21", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyHatEvent.value has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 22, "SDL_JoyHatEvent.padding1 has unexpected offset % instead of 22", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyHatEvent.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 23, "SDL_JoyHatEvent.padding2 has unexpected offset % instead of 23", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyHatEvent.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_JoyHatEvent) == 24, "SDL_JoyHatEvent has size % instead of 24", size_of(SDL_JoyHatEvent));
     }
 
     {
-        instance: SDL_JoyButtonEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_JoyButtonEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyButtonEvent.type)) == 4, "SDL_JoyButtonEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_JoyButtonEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_JoyButtonEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyButtonEvent.reserved)) == 4, "SDL_JoyButtonEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_JoyButtonEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_JoyButtonEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyButtonEvent.timestamp)) == 8, "SDL_JoyButtonEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_JoyButtonEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_JoyButtonEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyButtonEvent.which)) == 4, "SDL_JoyButtonEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_JoyButtonEvent.which)));
-        assert(((cast(*void)(*instance.button)) - cast(*void)(*instance)) == 20, "SDL_JoyButtonEvent.button has unexpected offset % instead of 20", ((cast(*void)(*instance.button)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyButtonEvent.button)) == 1, "SDL_JoyButtonEvent.button has unexpected size % instead of 1", size_of(type_of(SDL_JoyButtonEvent.button)));
-        assert(((cast(*void)(*instance.down)) - cast(*void)(*instance)) == 21, "SDL_JoyButtonEvent.down has unexpected offset % instead of 21", ((cast(*void)(*instance.down)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyButtonEvent.down)) == 1, "SDL_JoyButtonEvent.down has unexpected size % instead of 1", size_of(type_of(SDL_JoyButtonEvent.down)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 22, "SDL_JoyButtonEvent.padding1 has unexpected offset % instead of 22", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyButtonEvent.padding1)) == 1, "SDL_JoyButtonEvent.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_JoyButtonEvent.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 23, "SDL_JoyButtonEvent.padding2 has unexpected offset % instead of 23", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyButtonEvent.padding2)) == 1, "SDL_JoyButtonEvent.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_JoyButtonEvent.padding2)));
+        info := type_info(SDL_JoyButtonEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_JoyButtonEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyButtonEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_JoyButtonEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyButtonEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_JoyButtonEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_JoyButtonEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_JoyButtonEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyButtonEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "button";
+                    assert(it.offset_in_bytes == 20, "SDL_JoyButtonEvent.button has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyButtonEvent.button has unexpected size % instead of 1", it.type.runtime_size);
+                case "down";
+                    assert(it.offset_in_bytes == 21, "SDL_JoyButtonEvent.down has unexpected offset % instead of 21", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyButtonEvent.down has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 22, "SDL_JoyButtonEvent.padding1 has unexpected offset % instead of 22", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyButtonEvent.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 23, "SDL_JoyButtonEvent.padding2 has unexpected offset % instead of 23", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_JoyButtonEvent.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_JoyButtonEvent) == 24, "SDL_JoyButtonEvent has size % instead of 24", size_of(SDL_JoyButtonEvent));
     }
 
     {
-        instance: SDL_JoyDeviceEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_JoyDeviceEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyDeviceEvent.type)) == 4, "SDL_JoyDeviceEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_JoyDeviceEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_JoyDeviceEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyDeviceEvent.reserved)) == 4, "SDL_JoyDeviceEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_JoyDeviceEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_JoyDeviceEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyDeviceEvent.timestamp)) == 8, "SDL_JoyDeviceEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_JoyDeviceEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_JoyDeviceEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyDeviceEvent.which)) == 4, "SDL_JoyDeviceEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_JoyDeviceEvent.which)));
+        info := type_info(SDL_JoyDeviceEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_JoyDeviceEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyDeviceEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_JoyDeviceEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyDeviceEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_JoyDeviceEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_JoyDeviceEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_JoyDeviceEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyDeviceEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_JoyDeviceEvent) == 24, "SDL_JoyDeviceEvent has size % instead of 24", size_of(SDL_JoyDeviceEvent));
     }
 
     {
-        instance: SDL_JoyBatteryEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_JoyBatteryEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBatteryEvent.type)) == 4, "SDL_JoyBatteryEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_JoyBatteryEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_JoyBatteryEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBatteryEvent.reserved)) == 4, "SDL_JoyBatteryEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_JoyBatteryEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_JoyBatteryEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBatteryEvent.timestamp)) == 8, "SDL_JoyBatteryEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_JoyBatteryEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_JoyBatteryEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBatteryEvent.which)) == 4, "SDL_JoyBatteryEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_JoyBatteryEvent.which)));
-        assert(((cast(*void)(*instance.state)) - cast(*void)(*instance)) == 20, "SDL_JoyBatteryEvent.state has unexpected offset % instead of 20", ((cast(*void)(*instance.state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBatteryEvent.state)) == 4, "SDL_JoyBatteryEvent.state has unexpected size % instead of 4", size_of(type_of(SDL_JoyBatteryEvent.state)));
-        assert(((cast(*void)(*instance.percent)) - cast(*void)(*instance)) == 24, "SDL_JoyBatteryEvent.percent has unexpected offset % instead of 24", ((cast(*void)(*instance.percent)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_JoyBatteryEvent.percent)) == 4, "SDL_JoyBatteryEvent.percent has unexpected size % instead of 4", size_of(type_of(SDL_JoyBatteryEvent.percent)));
+        info := type_info(SDL_JoyBatteryEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_JoyBatteryEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyBatteryEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_JoyBatteryEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyBatteryEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_JoyBatteryEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_JoyBatteryEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_JoyBatteryEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyBatteryEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "state";
+                    assert(it.offset_in_bytes == 20, "SDL_JoyBatteryEvent.state has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyBatteryEvent.state has unexpected size % instead of 4", it.type.runtime_size);
+                case "percent";
+                    assert(it.offset_in_bytes == 24, "SDL_JoyBatteryEvent.percent has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_JoyBatteryEvent.percent has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_JoyBatteryEvent) == 32, "SDL_JoyBatteryEvent has size % instead of 32", size_of(SDL_JoyBatteryEvent));
     }
 
     {
-        instance: SDL_GamepadAxisEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_GamepadAxisEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadAxisEvent.type)) == 4, "SDL_GamepadAxisEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_GamepadAxisEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_GamepadAxisEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadAxisEvent.reserved)) == 4, "SDL_GamepadAxisEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_GamepadAxisEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_GamepadAxisEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadAxisEvent.timestamp)) == 8, "SDL_GamepadAxisEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_GamepadAxisEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_GamepadAxisEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadAxisEvent.which)) == 4, "SDL_GamepadAxisEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_GamepadAxisEvent.which)));
-        assert(((cast(*void)(*instance.axis)) - cast(*void)(*instance)) == 20, "SDL_GamepadAxisEvent.axis has unexpected offset % instead of 20", ((cast(*void)(*instance.axis)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadAxisEvent.axis)) == 1, "SDL_GamepadAxisEvent.axis has unexpected size % instead of 1", size_of(type_of(SDL_GamepadAxisEvent.axis)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 21, "SDL_GamepadAxisEvent.padding1 has unexpected offset % instead of 21", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadAxisEvent.padding1)) == 1, "SDL_GamepadAxisEvent.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GamepadAxisEvent.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 22, "SDL_GamepadAxisEvent.padding2 has unexpected offset % instead of 22", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadAxisEvent.padding2)) == 1, "SDL_GamepadAxisEvent.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GamepadAxisEvent.padding2)));
-        assert(((cast(*void)(*instance.padding3)) - cast(*void)(*instance)) == 23, "SDL_GamepadAxisEvent.padding3 has unexpected offset % instead of 23", ((cast(*void)(*instance.padding3)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadAxisEvent.padding3)) == 1, "SDL_GamepadAxisEvent.padding3 has unexpected size % instead of 1", size_of(type_of(SDL_GamepadAxisEvent.padding3)));
-        assert(((cast(*void)(*instance.value)) - cast(*void)(*instance)) == 24, "SDL_GamepadAxisEvent.value has unexpected offset % instead of 24", ((cast(*void)(*instance.value)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadAxisEvent.value)) == 2, "SDL_GamepadAxisEvent.value has unexpected size % instead of 2", size_of(type_of(SDL_GamepadAxisEvent.value)));
-        assert(((cast(*void)(*instance.padding4)) - cast(*void)(*instance)) == 26, "SDL_GamepadAxisEvent.padding4 has unexpected offset % instead of 26", ((cast(*void)(*instance.padding4)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadAxisEvent.padding4)) == 2, "SDL_GamepadAxisEvent.padding4 has unexpected size % instead of 2", size_of(type_of(SDL_GamepadAxisEvent.padding4)));
+        info := type_info(SDL_GamepadAxisEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_GamepadAxisEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadAxisEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_GamepadAxisEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadAxisEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_GamepadAxisEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GamepadAxisEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_GamepadAxisEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadAxisEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "axis";
+                    assert(it.offset_in_bytes == 20, "SDL_GamepadAxisEvent.axis has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GamepadAxisEvent.axis has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 21, "SDL_GamepadAxisEvent.padding1 has unexpected offset % instead of 21", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GamepadAxisEvent.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 22, "SDL_GamepadAxisEvent.padding2 has unexpected offset % instead of 22", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GamepadAxisEvent.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding3";
+                    assert(it.offset_in_bytes == 23, "SDL_GamepadAxisEvent.padding3 has unexpected offset % instead of 23", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GamepadAxisEvent.padding3 has unexpected size % instead of 1", it.type.runtime_size);
+                case "value";
+                    assert(it.offset_in_bytes == 24, "SDL_GamepadAxisEvent.value has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_GamepadAxisEvent.value has unexpected size % instead of 2", it.type.runtime_size);
+                case "padding4";
+                    assert(it.offset_in_bytes == 26, "SDL_GamepadAxisEvent.padding4 has unexpected offset % instead of 26", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_GamepadAxisEvent.padding4 has unexpected size % instead of 2", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GamepadAxisEvent) == 32, "SDL_GamepadAxisEvent has size % instead of 32", size_of(SDL_GamepadAxisEvent));
     }
 
     {
-        instance: SDL_GamepadButtonEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_GamepadButtonEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadButtonEvent.type)) == 4, "SDL_GamepadButtonEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_GamepadButtonEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_GamepadButtonEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadButtonEvent.reserved)) == 4, "SDL_GamepadButtonEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_GamepadButtonEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_GamepadButtonEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadButtonEvent.timestamp)) == 8, "SDL_GamepadButtonEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_GamepadButtonEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_GamepadButtonEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadButtonEvent.which)) == 4, "SDL_GamepadButtonEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_GamepadButtonEvent.which)));
-        assert(((cast(*void)(*instance.button)) - cast(*void)(*instance)) == 20, "SDL_GamepadButtonEvent.button has unexpected offset % instead of 20", ((cast(*void)(*instance.button)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadButtonEvent.button)) == 1, "SDL_GamepadButtonEvent.button has unexpected size % instead of 1", size_of(type_of(SDL_GamepadButtonEvent.button)));
-        assert(((cast(*void)(*instance.down)) - cast(*void)(*instance)) == 21, "SDL_GamepadButtonEvent.down has unexpected offset % instead of 21", ((cast(*void)(*instance.down)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadButtonEvent.down)) == 1, "SDL_GamepadButtonEvent.down has unexpected size % instead of 1", size_of(type_of(SDL_GamepadButtonEvent.down)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 22, "SDL_GamepadButtonEvent.padding1 has unexpected offset % instead of 22", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadButtonEvent.padding1)) == 1, "SDL_GamepadButtonEvent.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GamepadButtonEvent.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 23, "SDL_GamepadButtonEvent.padding2 has unexpected offset % instead of 23", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadButtonEvent.padding2)) == 1, "SDL_GamepadButtonEvent.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GamepadButtonEvent.padding2)));
+        info := type_info(SDL_GamepadButtonEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_GamepadButtonEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadButtonEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_GamepadButtonEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadButtonEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_GamepadButtonEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GamepadButtonEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_GamepadButtonEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadButtonEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "button";
+                    assert(it.offset_in_bytes == 20, "SDL_GamepadButtonEvent.button has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GamepadButtonEvent.button has unexpected size % instead of 1", it.type.runtime_size);
+                case "down";
+                    assert(it.offset_in_bytes == 21, "SDL_GamepadButtonEvent.down has unexpected offset % instead of 21", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GamepadButtonEvent.down has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 22, "SDL_GamepadButtonEvent.padding1 has unexpected offset % instead of 22", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GamepadButtonEvent.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 23, "SDL_GamepadButtonEvent.padding2 has unexpected offset % instead of 23", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GamepadButtonEvent.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GamepadButtonEvent) == 24, "SDL_GamepadButtonEvent has size % instead of 24", size_of(SDL_GamepadButtonEvent));
     }
 
     {
-        instance: SDL_GamepadDeviceEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_GamepadDeviceEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadDeviceEvent.type)) == 4, "SDL_GamepadDeviceEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_GamepadDeviceEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_GamepadDeviceEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadDeviceEvent.reserved)) == 4, "SDL_GamepadDeviceEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_GamepadDeviceEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_GamepadDeviceEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadDeviceEvent.timestamp)) == 8, "SDL_GamepadDeviceEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_GamepadDeviceEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_GamepadDeviceEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadDeviceEvent.which)) == 4, "SDL_GamepadDeviceEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_GamepadDeviceEvent.which)));
+        info := type_info(SDL_GamepadDeviceEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_GamepadDeviceEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadDeviceEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_GamepadDeviceEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadDeviceEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_GamepadDeviceEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GamepadDeviceEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_GamepadDeviceEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadDeviceEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GamepadDeviceEvent) == 24, "SDL_GamepadDeviceEvent has size % instead of 24", size_of(SDL_GamepadDeviceEvent));
     }
 
     {
-        instance: SDL_GamepadTouchpadEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_GamepadTouchpadEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadTouchpadEvent.type)) == 4, "SDL_GamepadTouchpadEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_GamepadTouchpadEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_GamepadTouchpadEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadTouchpadEvent.reserved)) == 4, "SDL_GamepadTouchpadEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_GamepadTouchpadEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_GamepadTouchpadEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadTouchpadEvent.timestamp)) == 8, "SDL_GamepadTouchpadEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_GamepadTouchpadEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_GamepadTouchpadEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadTouchpadEvent.which)) == 4, "SDL_GamepadTouchpadEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_GamepadTouchpadEvent.which)));
-        assert(((cast(*void)(*instance.touchpad)) - cast(*void)(*instance)) == 20, "SDL_GamepadTouchpadEvent.touchpad has unexpected offset % instead of 20", ((cast(*void)(*instance.touchpad)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadTouchpadEvent.touchpad)) == 4, "SDL_GamepadTouchpadEvent.touchpad has unexpected size % instead of 4", size_of(type_of(SDL_GamepadTouchpadEvent.touchpad)));
-        assert(((cast(*void)(*instance.finger)) - cast(*void)(*instance)) == 24, "SDL_GamepadTouchpadEvent.finger has unexpected offset % instead of 24", ((cast(*void)(*instance.finger)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadTouchpadEvent.finger)) == 4, "SDL_GamepadTouchpadEvent.finger has unexpected size % instead of 4", size_of(type_of(SDL_GamepadTouchpadEvent.finger)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 28, "SDL_GamepadTouchpadEvent.x has unexpected offset % instead of 28", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadTouchpadEvent.x)) == 4, "SDL_GamepadTouchpadEvent.x has unexpected size % instead of 4", size_of(type_of(SDL_GamepadTouchpadEvent.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 32, "SDL_GamepadTouchpadEvent.y has unexpected offset % instead of 32", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadTouchpadEvent.y)) == 4, "SDL_GamepadTouchpadEvent.y has unexpected size % instead of 4", size_of(type_of(SDL_GamepadTouchpadEvent.y)));
-        assert(((cast(*void)(*instance.pressure)) - cast(*void)(*instance)) == 36, "SDL_GamepadTouchpadEvent.pressure has unexpected offset % instead of 36", ((cast(*void)(*instance.pressure)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadTouchpadEvent.pressure)) == 4, "SDL_GamepadTouchpadEvent.pressure has unexpected size % instead of 4", size_of(type_of(SDL_GamepadTouchpadEvent.pressure)));
+        info := type_info(SDL_GamepadTouchpadEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_GamepadTouchpadEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadTouchpadEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_GamepadTouchpadEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadTouchpadEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_GamepadTouchpadEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GamepadTouchpadEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_GamepadTouchpadEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadTouchpadEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "touchpad";
+                    assert(it.offset_in_bytes == 20, "SDL_GamepadTouchpadEvent.touchpad has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadTouchpadEvent.touchpad has unexpected size % instead of 4", it.type.runtime_size);
+                case "finger";
+                    assert(it.offset_in_bytes == 24, "SDL_GamepadTouchpadEvent.finger has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadTouchpadEvent.finger has unexpected size % instead of 4", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 28, "SDL_GamepadTouchpadEvent.x has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadTouchpadEvent.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 32, "SDL_GamepadTouchpadEvent.y has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadTouchpadEvent.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "pressure";
+                    assert(it.offset_in_bytes == 36, "SDL_GamepadTouchpadEvent.pressure has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadTouchpadEvent.pressure has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GamepadTouchpadEvent) == 40, "SDL_GamepadTouchpadEvent has size % instead of 40", size_of(SDL_GamepadTouchpadEvent));
     }
 
     {
-        instance: SDL_GamepadSensorEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_GamepadSensorEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadSensorEvent.type)) == 4, "SDL_GamepadSensorEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_GamepadSensorEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_GamepadSensorEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadSensorEvent.reserved)) == 4, "SDL_GamepadSensorEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_GamepadSensorEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_GamepadSensorEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadSensorEvent.timestamp)) == 8, "SDL_GamepadSensorEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_GamepadSensorEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_GamepadSensorEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadSensorEvent.which)) == 4, "SDL_GamepadSensorEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_GamepadSensorEvent.which)));
-        assert(((cast(*void)(*instance.sensor)) - cast(*void)(*instance)) == 20, "SDL_GamepadSensorEvent.sensor has unexpected offset % instead of 20", ((cast(*void)(*instance.sensor)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadSensorEvent.sensor)) == 4, "SDL_GamepadSensorEvent.sensor has unexpected size % instead of 4", size_of(type_of(SDL_GamepadSensorEvent.sensor)));
-        assert(((cast(*void)(*instance.data)) - cast(*void)(*instance)) == 24, "SDL_GamepadSensorEvent.data has unexpected offset % instead of 24", ((cast(*void)(*instance.data)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadSensorEvent.data)) == 12, "SDL_GamepadSensorEvent.data has unexpected size % instead of 12", size_of(type_of(SDL_GamepadSensorEvent.data)));
-        assert(((cast(*void)(*instance.sensor_timestamp)) - cast(*void)(*instance)) == 40, "SDL_GamepadSensorEvent.sensor_timestamp has unexpected offset % instead of 40", ((cast(*void)(*instance.sensor_timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GamepadSensorEvent.sensor_timestamp)) == 8, "SDL_GamepadSensorEvent.sensor_timestamp has unexpected size % instead of 8", size_of(type_of(SDL_GamepadSensorEvent.sensor_timestamp)));
+        info := type_info(SDL_GamepadSensorEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_GamepadSensorEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadSensorEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_GamepadSensorEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadSensorEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_GamepadSensorEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GamepadSensorEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_GamepadSensorEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadSensorEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "sensor";
+                    assert(it.offset_in_bytes == 20, "SDL_GamepadSensorEvent.sensor has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GamepadSensorEvent.sensor has unexpected size % instead of 4", it.type.runtime_size);
+                case "data";
+                    assert(it.offset_in_bytes == 24, "SDL_GamepadSensorEvent.data has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 12, "SDL_GamepadSensorEvent.data has unexpected size % instead of 12", it.type.runtime_size);
+                case "sensor_timestamp";
+                    assert(it.offset_in_bytes == 40, "SDL_GamepadSensorEvent.sensor_timestamp has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GamepadSensorEvent.sensor_timestamp has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GamepadSensorEvent) == 48, "SDL_GamepadSensorEvent has size % instead of 48", size_of(SDL_GamepadSensorEvent));
     }
 
     {
-        instance: SDL_AudioDeviceEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_AudioDeviceEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AudioDeviceEvent.type)) == 4, "SDL_AudioDeviceEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_AudioDeviceEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_AudioDeviceEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AudioDeviceEvent.reserved)) == 4, "SDL_AudioDeviceEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_AudioDeviceEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_AudioDeviceEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AudioDeviceEvent.timestamp)) == 8, "SDL_AudioDeviceEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_AudioDeviceEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_AudioDeviceEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AudioDeviceEvent.which)) == 4, "SDL_AudioDeviceEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_AudioDeviceEvent.which)));
-        assert(((cast(*void)(*instance.recording)) - cast(*void)(*instance)) == 20, "SDL_AudioDeviceEvent.recording has unexpected offset % instead of 20", ((cast(*void)(*instance.recording)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AudioDeviceEvent.recording)) == 1, "SDL_AudioDeviceEvent.recording has unexpected size % instead of 1", size_of(type_of(SDL_AudioDeviceEvent.recording)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 21, "SDL_AudioDeviceEvent.padding1 has unexpected offset % instead of 21", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AudioDeviceEvent.padding1)) == 1, "SDL_AudioDeviceEvent.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_AudioDeviceEvent.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 22, "SDL_AudioDeviceEvent.padding2 has unexpected offset % instead of 22", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AudioDeviceEvent.padding2)) == 1, "SDL_AudioDeviceEvent.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_AudioDeviceEvent.padding2)));
-        assert(((cast(*void)(*instance.padding3)) - cast(*void)(*instance)) == 23, "SDL_AudioDeviceEvent.padding3 has unexpected offset % instead of 23", ((cast(*void)(*instance.padding3)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_AudioDeviceEvent.padding3)) == 1, "SDL_AudioDeviceEvent.padding3 has unexpected size % instead of 1", size_of(type_of(SDL_AudioDeviceEvent.padding3)));
+        info := type_info(SDL_AudioDeviceEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_AudioDeviceEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_AudioDeviceEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_AudioDeviceEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_AudioDeviceEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_AudioDeviceEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_AudioDeviceEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_AudioDeviceEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_AudioDeviceEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "recording";
+                    assert(it.offset_in_bytes == 20, "SDL_AudioDeviceEvent.recording has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_AudioDeviceEvent.recording has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 21, "SDL_AudioDeviceEvent.padding1 has unexpected offset % instead of 21", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_AudioDeviceEvent.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 22, "SDL_AudioDeviceEvent.padding2 has unexpected offset % instead of 22", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_AudioDeviceEvent.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding3";
+                    assert(it.offset_in_bytes == 23, "SDL_AudioDeviceEvent.padding3 has unexpected offset % instead of 23", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_AudioDeviceEvent.padding3 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_AudioDeviceEvent) == 24, "SDL_AudioDeviceEvent has size % instead of 24", size_of(SDL_AudioDeviceEvent));
     }
 
     {
-        instance: SDL_CameraDeviceEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_CameraDeviceEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CameraDeviceEvent.type)) == 4, "SDL_CameraDeviceEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_CameraDeviceEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_CameraDeviceEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CameraDeviceEvent.reserved)) == 4, "SDL_CameraDeviceEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_CameraDeviceEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_CameraDeviceEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CameraDeviceEvent.timestamp)) == 8, "SDL_CameraDeviceEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_CameraDeviceEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_CameraDeviceEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_CameraDeviceEvent.which)) == 4, "SDL_CameraDeviceEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_CameraDeviceEvent.which)));
+        info := type_info(SDL_CameraDeviceEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_CameraDeviceEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_CameraDeviceEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_CameraDeviceEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_CameraDeviceEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_CameraDeviceEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_CameraDeviceEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_CameraDeviceEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_CameraDeviceEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_CameraDeviceEvent) == 24, "SDL_CameraDeviceEvent has size % instead of 24", size_of(SDL_CameraDeviceEvent));
     }
 
     {
-        instance: SDL_RenderEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_RenderEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_RenderEvent.type)) == 4, "SDL_RenderEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_RenderEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_RenderEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_RenderEvent.reserved)) == 4, "SDL_RenderEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_RenderEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_RenderEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_RenderEvent.timestamp)) == 8, "SDL_RenderEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_RenderEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_RenderEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_RenderEvent.windowID)) == 4, "SDL_RenderEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_RenderEvent.windowID)));
+        info := type_info(SDL_RenderEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_RenderEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_RenderEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_RenderEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_RenderEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_RenderEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_RenderEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_RenderEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_RenderEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_RenderEvent) == 24, "SDL_RenderEvent has size % instead of 24", size_of(SDL_RenderEvent));
     }
 
     {
-        instance: SDL_TouchFingerEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_TouchFingerEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TouchFingerEvent.type)) == 4, "SDL_TouchFingerEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_TouchFingerEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_TouchFingerEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TouchFingerEvent.reserved)) == 4, "SDL_TouchFingerEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_TouchFingerEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_TouchFingerEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TouchFingerEvent.timestamp)) == 8, "SDL_TouchFingerEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_TouchFingerEvent.timestamp)));
-        assert(((cast(*void)(*instance.touchID)) - cast(*void)(*instance)) == 16, "SDL_TouchFingerEvent.touchID has unexpected offset % instead of 16", ((cast(*void)(*instance.touchID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TouchFingerEvent.touchID)) == 8, "SDL_TouchFingerEvent.touchID has unexpected size % instead of 8", size_of(type_of(SDL_TouchFingerEvent.touchID)));
-        assert(((cast(*void)(*instance.fingerID)) - cast(*void)(*instance)) == 24, "SDL_TouchFingerEvent.fingerID has unexpected offset % instead of 24", ((cast(*void)(*instance.fingerID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TouchFingerEvent.fingerID)) == 8, "SDL_TouchFingerEvent.fingerID has unexpected size % instead of 8", size_of(type_of(SDL_TouchFingerEvent.fingerID)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 32, "SDL_TouchFingerEvent.x has unexpected offset % instead of 32", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TouchFingerEvent.x)) == 4, "SDL_TouchFingerEvent.x has unexpected size % instead of 4", size_of(type_of(SDL_TouchFingerEvent.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 36, "SDL_TouchFingerEvent.y has unexpected offset % instead of 36", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TouchFingerEvent.y)) == 4, "SDL_TouchFingerEvent.y has unexpected size % instead of 4", size_of(type_of(SDL_TouchFingerEvent.y)));
-        assert(((cast(*void)(*instance.dx)) - cast(*void)(*instance)) == 40, "SDL_TouchFingerEvent.dx has unexpected offset % instead of 40", ((cast(*void)(*instance.dx)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TouchFingerEvent.dx)) == 4, "SDL_TouchFingerEvent.dx has unexpected size % instead of 4", size_of(type_of(SDL_TouchFingerEvent.dx)));
-        assert(((cast(*void)(*instance.dy)) - cast(*void)(*instance)) == 44, "SDL_TouchFingerEvent.dy has unexpected offset % instead of 44", ((cast(*void)(*instance.dy)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TouchFingerEvent.dy)) == 4, "SDL_TouchFingerEvent.dy has unexpected size % instead of 4", size_of(type_of(SDL_TouchFingerEvent.dy)));
-        assert(((cast(*void)(*instance.pressure)) - cast(*void)(*instance)) == 48, "SDL_TouchFingerEvent.pressure has unexpected offset % instead of 48", ((cast(*void)(*instance.pressure)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TouchFingerEvent.pressure)) == 4, "SDL_TouchFingerEvent.pressure has unexpected size % instead of 4", size_of(type_of(SDL_TouchFingerEvent.pressure)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 52, "SDL_TouchFingerEvent.windowID has unexpected offset % instead of 52", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_TouchFingerEvent.windowID)) == 4, "SDL_TouchFingerEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_TouchFingerEvent.windowID)));
+        info := type_info(SDL_TouchFingerEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_TouchFingerEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TouchFingerEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_TouchFingerEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TouchFingerEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_TouchFingerEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_TouchFingerEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "touchID";
+                    assert(it.offset_in_bytes == 16, "SDL_TouchFingerEvent.touchID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_TouchFingerEvent.touchID has unexpected size % instead of 8", it.type.runtime_size);
+                case "fingerID";
+                    assert(it.offset_in_bytes == 24, "SDL_TouchFingerEvent.fingerID has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_TouchFingerEvent.fingerID has unexpected size % instead of 8", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 32, "SDL_TouchFingerEvent.x has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TouchFingerEvent.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 36, "SDL_TouchFingerEvent.y has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TouchFingerEvent.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "dx";
+                    assert(it.offset_in_bytes == 40, "SDL_TouchFingerEvent.dx has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TouchFingerEvent.dx has unexpected size % instead of 4", it.type.runtime_size);
+                case "dy";
+                    assert(it.offset_in_bytes == 44, "SDL_TouchFingerEvent.dy has unexpected offset % instead of 44", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TouchFingerEvent.dy has unexpected size % instead of 4", it.type.runtime_size);
+                case "pressure";
+                    assert(it.offset_in_bytes == 48, "SDL_TouchFingerEvent.pressure has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TouchFingerEvent.pressure has unexpected size % instead of 4", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 52, "SDL_TouchFingerEvent.windowID has unexpected offset % instead of 52", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_TouchFingerEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_TouchFingerEvent) == 56, "SDL_TouchFingerEvent has size % instead of 56", size_of(SDL_TouchFingerEvent));
     }
 
     {
-        instance: SDL_PenProximityEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_PenProximityEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenProximityEvent.type)) == 4, "SDL_PenProximityEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_PenProximityEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_PenProximityEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenProximityEvent.reserved)) == 4, "SDL_PenProximityEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_PenProximityEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_PenProximityEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenProximityEvent.timestamp)) == 8, "SDL_PenProximityEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_PenProximityEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_PenProximityEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenProximityEvent.windowID)) == 4, "SDL_PenProximityEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_PenProximityEvent.windowID)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 20, "SDL_PenProximityEvent.which has unexpected offset % instead of 20", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenProximityEvent.which)) == 4, "SDL_PenProximityEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_PenProximityEvent.which)));
+        info := type_info(SDL_PenProximityEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_PenProximityEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenProximityEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_PenProximityEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenProximityEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_PenProximityEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_PenProximityEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_PenProximityEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenProximityEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 20, "SDL_PenProximityEvent.which has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenProximityEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_PenProximityEvent) == 24, "SDL_PenProximityEvent has size % instead of 24", size_of(SDL_PenProximityEvent));
     }
 
     {
-        instance: SDL_PenMotionEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_PenMotionEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenMotionEvent.type)) == 4, "SDL_PenMotionEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_PenMotionEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_PenMotionEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenMotionEvent.reserved)) == 4, "SDL_PenMotionEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_PenMotionEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_PenMotionEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenMotionEvent.timestamp)) == 8, "SDL_PenMotionEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_PenMotionEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_PenMotionEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenMotionEvent.windowID)) == 4, "SDL_PenMotionEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_PenMotionEvent.windowID)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 20, "SDL_PenMotionEvent.which has unexpected offset % instead of 20", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenMotionEvent.which)) == 4, "SDL_PenMotionEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_PenMotionEvent.which)));
-        assert(((cast(*void)(*instance.pen_state)) - cast(*void)(*instance)) == 24, "SDL_PenMotionEvent.pen_state has unexpected offset % instead of 24", ((cast(*void)(*instance.pen_state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenMotionEvent.pen_state)) == 4, "SDL_PenMotionEvent.pen_state has unexpected size % instead of 4", size_of(type_of(SDL_PenMotionEvent.pen_state)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 28, "SDL_PenMotionEvent.x has unexpected offset % instead of 28", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenMotionEvent.x)) == 4, "SDL_PenMotionEvent.x has unexpected size % instead of 4", size_of(type_of(SDL_PenMotionEvent.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 32, "SDL_PenMotionEvent.y has unexpected offset % instead of 32", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenMotionEvent.y)) == 4, "SDL_PenMotionEvent.y has unexpected size % instead of 4", size_of(type_of(SDL_PenMotionEvent.y)));
+        info := type_info(SDL_PenMotionEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_PenMotionEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenMotionEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_PenMotionEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenMotionEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_PenMotionEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_PenMotionEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_PenMotionEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenMotionEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 20, "SDL_PenMotionEvent.which has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenMotionEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "pen_state";
+                    assert(it.offset_in_bytes == 24, "SDL_PenMotionEvent.pen_state has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenMotionEvent.pen_state has unexpected size % instead of 4", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 28, "SDL_PenMotionEvent.x has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenMotionEvent.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 32, "SDL_PenMotionEvent.y has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenMotionEvent.y has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_PenMotionEvent) == 40, "SDL_PenMotionEvent has size % instead of 40", size_of(SDL_PenMotionEvent));
     }
 
     {
-        instance: SDL_PenTouchEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_PenTouchEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenTouchEvent.type)) == 4, "SDL_PenTouchEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_PenTouchEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_PenTouchEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenTouchEvent.reserved)) == 4, "SDL_PenTouchEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_PenTouchEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_PenTouchEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenTouchEvent.timestamp)) == 8, "SDL_PenTouchEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_PenTouchEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_PenTouchEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenTouchEvent.windowID)) == 4, "SDL_PenTouchEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_PenTouchEvent.windowID)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 20, "SDL_PenTouchEvent.which has unexpected offset % instead of 20", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenTouchEvent.which)) == 4, "SDL_PenTouchEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_PenTouchEvent.which)));
-        assert(((cast(*void)(*instance.pen_state)) - cast(*void)(*instance)) == 24, "SDL_PenTouchEvent.pen_state has unexpected offset % instead of 24", ((cast(*void)(*instance.pen_state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenTouchEvent.pen_state)) == 4, "SDL_PenTouchEvent.pen_state has unexpected size % instead of 4", size_of(type_of(SDL_PenTouchEvent.pen_state)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 28, "SDL_PenTouchEvent.x has unexpected offset % instead of 28", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenTouchEvent.x)) == 4, "SDL_PenTouchEvent.x has unexpected size % instead of 4", size_of(type_of(SDL_PenTouchEvent.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 32, "SDL_PenTouchEvent.y has unexpected offset % instead of 32", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenTouchEvent.y)) == 4, "SDL_PenTouchEvent.y has unexpected size % instead of 4", size_of(type_of(SDL_PenTouchEvent.y)));
-        assert(((cast(*void)(*instance.eraser)) - cast(*void)(*instance)) == 36, "SDL_PenTouchEvent.eraser has unexpected offset % instead of 36", ((cast(*void)(*instance.eraser)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenTouchEvent.eraser)) == 1, "SDL_PenTouchEvent.eraser has unexpected size % instead of 1", size_of(type_of(SDL_PenTouchEvent.eraser)));
-        assert(((cast(*void)(*instance.down)) - cast(*void)(*instance)) == 37, "SDL_PenTouchEvent.down has unexpected offset % instead of 37", ((cast(*void)(*instance.down)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenTouchEvent.down)) == 1, "SDL_PenTouchEvent.down has unexpected size % instead of 1", size_of(type_of(SDL_PenTouchEvent.down)));
+        info := type_info(SDL_PenTouchEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_PenTouchEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenTouchEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_PenTouchEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenTouchEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_PenTouchEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_PenTouchEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_PenTouchEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenTouchEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 20, "SDL_PenTouchEvent.which has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenTouchEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "pen_state";
+                    assert(it.offset_in_bytes == 24, "SDL_PenTouchEvent.pen_state has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenTouchEvent.pen_state has unexpected size % instead of 4", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 28, "SDL_PenTouchEvent.x has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenTouchEvent.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 32, "SDL_PenTouchEvent.y has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenTouchEvent.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "eraser";
+                    assert(it.offset_in_bytes == 36, "SDL_PenTouchEvent.eraser has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PenTouchEvent.eraser has unexpected size % instead of 1", it.type.runtime_size);
+                case "down";
+                    assert(it.offset_in_bytes == 37, "SDL_PenTouchEvent.down has unexpected offset % instead of 37", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PenTouchEvent.down has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_PenTouchEvent) == 40, "SDL_PenTouchEvent has size % instead of 40", size_of(SDL_PenTouchEvent));
     }
 
     {
-        instance: SDL_PenButtonEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_PenButtonEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenButtonEvent.type)) == 4, "SDL_PenButtonEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_PenButtonEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_PenButtonEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenButtonEvent.reserved)) == 4, "SDL_PenButtonEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_PenButtonEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_PenButtonEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenButtonEvent.timestamp)) == 8, "SDL_PenButtonEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_PenButtonEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_PenButtonEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenButtonEvent.windowID)) == 4, "SDL_PenButtonEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_PenButtonEvent.windowID)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 20, "SDL_PenButtonEvent.which has unexpected offset % instead of 20", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenButtonEvent.which)) == 4, "SDL_PenButtonEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_PenButtonEvent.which)));
-        assert(((cast(*void)(*instance.pen_state)) - cast(*void)(*instance)) == 24, "SDL_PenButtonEvent.pen_state has unexpected offset % instead of 24", ((cast(*void)(*instance.pen_state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenButtonEvent.pen_state)) == 4, "SDL_PenButtonEvent.pen_state has unexpected size % instead of 4", size_of(type_of(SDL_PenButtonEvent.pen_state)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 28, "SDL_PenButtonEvent.x has unexpected offset % instead of 28", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenButtonEvent.x)) == 4, "SDL_PenButtonEvent.x has unexpected size % instead of 4", size_of(type_of(SDL_PenButtonEvent.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 32, "SDL_PenButtonEvent.y has unexpected offset % instead of 32", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenButtonEvent.y)) == 4, "SDL_PenButtonEvent.y has unexpected size % instead of 4", size_of(type_of(SDL_PenButtonEvent.y)));
-        assert(((cast(*void)(*instance.button)) - cast(*void)(*instance)) == 36, "SDL_PenButtonEvent.button has unexpected offset % instead of 36", ((cast(*void)(*instance.button)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenButtonEvent.button)) == 1, "SDL_PenButtonEvent.button has unexpected size % instead of 1", size_of(type_of(SDL_PenButtonEvent.button)));
-        assert(((cast(*void)(*instance.down)) - cast(*void)(*instance)) == 37, "SDL_PenButtonEvent.down has unexpected offset % instead of 37", ((cast(*void)(*instance.down)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenButtonEvent.down)) == 1, "SDL_PenButtonEvent.down has unexpected size % instead of 1", size_of(type_of(SDL_PenButtonEvent.down)));
+        info := type_info(SDL_PenButtonEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_PenButtonEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenButtonEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_PenButtonEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenButtonEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_PenButtonEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_PenButtonEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_PenButtonEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenButtonEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 20, "SDL_PenButtonEvent.which has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenButtonEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "pen_state";
+                    assert(it.offset_in_bytes == 24, "SDL_PenButtonEvent.pen_state has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenButtonEvent.pen_state has unexpected size % instead of 4", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 28, "SDL_PenButtonEvent.x has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenButtonEvent.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 32, "SDL_PenButtonEvent.y has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenButtonEvent.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "button";
+                    assert(it.offset_in_bytes == 36, "SDL_PenButtonEvent.button has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PenButtonEvent.button has unexpected size % instead of 1", it.type.runtime_size);
+                case "down";
+                    assert(it.offset_in_bytes == 37, "SDL_PenButtonEvent.down has unexpected offset % instead of 37", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_PenButtonEvent.down has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_PenButtonEvent) == 40, "SDL_PenButtonEvent has size % instead of 40", size_of(SDL_PenButtonEvent));
     }
 
     {
-        instance: SDL_PenAxisEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_PenAxisEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenAxisEvent.type)) == 4, "SDL_PenAxisEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_PenAxisEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_PenAxisEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenAxisEvent.reserved)) == 4, "SDL_PenAxisEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_PenAxisEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_PenAxisEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenAxisEvent.timestamp)) == 8, "SDL_PenAxisEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_PenAxisEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_PenAxisEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenAxisEvent.windowID)) == 4, "SDL_PenAxisEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_PenAxisEvent.windowID)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 20, "SDL_PenAxisEvent.which has unexpected offset % instead of 20", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenAxisEvent.which)) == 4, "SDL_PenAxisEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_PenAxisEvent.which)));
-        assert(((cast(*void)(*instance.pen_state)) - cast(*void)(*instance)) == 24, "SDL_PenAxisEvent.pen_state has unexpected offset % instead of 24", ((cast(*void)(*instance.pen_state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenAxisEvent.pen_state)) == 4, "SDL_PenAxisEvent.pen_state has unexpected size % instead of 4", size_of(type_of(SDL_PenAxisEvent.pen_state)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 28, "SDL_PenAxisEvent.x has unexpected offset % instead of 28", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenAxisEvent.x)) == 4, "SDL_PenAxisEvent.x has unexpected size % instead of 4", size_of(type_of(SDL_PenAxisEvent.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 32, "SDL_PenAxisEvent.y has unexpected offset % instead of 32", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenAxisEvent.y)) == 4, "SDL_PenAxisEvent.y has unexpected size % instead of 4", size_of(type_of(SDL_PenAxisEvent.y)));
-        assert(((cast(*void)(*instance.axis)) - cast(*void)(*instance)) == 36, "SDL_PenAxisEvent.axis has unexpected offset % instead of 36", ((cast(*void)(*instance.axis)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenAxisEvent.axis)) == 4, "SDL_PenAxisEvent.axis has unexpected size % instead of 4", size_of(type_of(SDL_PenAxisEvent.axis)));
-        assert(((cast(*void)(*instance.value)) - cast(*void)(*instance)) == 40, "SDL_PenAxisEvent.value has unexpected offset % instead of 40", ((cast(*void)(*instance.value)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PenAxisEvent.value)) == 4, "SDL_PenAxisEvent.value has unexpected size % instead of 4", size_of(type_of(SDL_PenAxisEvent.value)));
+        info := type_info(SDL_PenAxisEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_PenAxisEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenAxisEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_PenAxisEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenAxisEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_PenAxisEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_PenAxisEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_PenAxisEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenAxisEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 20, "SDL_PenAxisEvent.which has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenAxisEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "pen_state";
+                    assert(it.offset_in_bytes == 24, "SDL_PenAxisEvent.pen_state has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenAxisEvent.pen_state has unexpected size % instead of 4", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 28, "SDL_PenAxisEvent.x has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenAxisEvent.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 32, "SDL_PenAxisEvent.y has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenAxisEvent.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "axis";
+                    assert(it.offset_in_bytes == 36, "SDL_PenAxisEvent.axis has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenAxisEvent.axis has unexpected size % instead of 4", it.type.runtime_size);
+                case "value";
+                    assert(it.offset_in_bytes == 40, "SDL_PenAxisEvent.value has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PenAxisEvent.value has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_PenAxisEvent) == 48, "SDL_PenAxisEvent has size % instead of 48", size_of(SDL_PenAxisEvent));
     }
 
     {
-        instance: SDL_DropEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_DropEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DropEvent.type)) == 4, "SDL_DropEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_DropEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_DropEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DropEvent.reserved)) == 4, "SDL_DropEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_DropEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_DropEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DropEvent.timestamp)) == 8, "SDL_DropEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_DropEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_DropEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DropEvent.windowID)) == 4, "SDL_DropEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_DropEvent.windowID)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 20, "SDL_DropEvent.x has unexpected offset % instead of 20", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DropEvent.x)) == 4, "SDL_DropEvent.x has unexpected size % instead of 4", size_of(type_of(SDL_DropEvent.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 24, "SDL_DropEvent.y has unexpected offset % instead of 24", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DropEvent.y)) == 4, "SDL_DropEvent.y has unexpected size % instead of 4", size_of(type_of(SDL_DropEvent.y)));
-        assert(((cast(*void)(*instance.source)) - cast(*void)(*instance)) == 32, "SDL_DropEvent.source has unexpected offset % instead of 32", ((cast(*void)(*instance.source)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DropEvent.source)) == 8, "SDL_DropEvent.source has unexpected size % instead of 8", size_of(type_of(SDL_DropEvent.source)));
-        assert(((cast(*void)(*instance.data)) - cast(*void)(*instance)) == 40, "SDL_DropEvent.data has unexpected offset % instead of 40", ((cast(*void)(*instance.data)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DropEvent.data)) == 8, "SDL_DropEvent.data has unexpected size % instead of 8", size_of(type_of(SDL_DropEvent.data)));
+        info := type_info(SDL_DropEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_DropEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DropEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_DropEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DropEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_DropEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_DropEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_DropEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DropEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 20, "SDL_DropEvent.x has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DropEvent.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 24, "SDL_DropEvent.y has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DropEvent.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "source";
+                    assert(it.offset_in_bytes == 32, "SDL_DropEvent.source has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_DropEvent.source has unexpected size % instead of 8", it.type.runtime_size);
+                case "data";
+                    assert(it.offset_in_bytes == 40, "SDL_DropEvent.data has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_DropEvent.data has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_DropEvent) == 48, "SDL_DropEvent has size % instead of 48", size_of(SDL_DropEvent));
     }
 
     {
-        instance: SDL_ClipboardEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_ClipboardEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ClipboardEvent.type)) == 4, "SDL_ClipboardEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_ClipboardEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_ClipboardEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ClipboardEvent.reserved)) == 4, "SDL_ClipboardEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_ClipboardEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_ClipboardEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ClipboardEvent.timestamp)) == 8, "SDL_ClipboardEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_ClipboardEvent.timestamp)));
-        assert(((cast(*void)(*instance.owner)) - cast(*void)(*instance)) == 16, "SDL_ClipboardEvent.owner has unexpected offset % instead of 16", ((cast(*void)(*instance.owner)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ClipboardEvent.owner)) == 1, "SDL_ClipboardEvent.owner has unexpected size % instead of 1", size_of(type_of(SDL_ClipboardEvent.owner)));
-        assert(((cast(*void)(*instance.num_mime_types)) - cast(*void)(*instance)) == 20, "SDL_ClipboardEvent.num_mime_types has unexpected offset % instead of 20", ((cast(*void)(*instance.num_mime_types)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ClipboardEvent.num_mime_types)) == 4, "SDL_ClipboardEvent.num_mime_types has unexpected size % instead of 4", size_of(type_of(SDL_ClipboardEvent.num_mime_types)));
-        assert(((cast(*void)(*instance.mime_types)) - cast(*void)(*instance)) == 24, "SDL_ClipboardEvent.mime_types has unexpected offset % instead of 24", ((cast(*void)(*instance.mime_types)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ClipboardEvent.mime_types)) == 8, "SDL_ClipboardEvent.mime_types has unexpected size % instead of 8", size_of(type_of(SDL_ClipboardEvent.mime_types)));
+        info := type_info(SDL_ClipboardEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_ClipboardEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ClipboardEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_ClipboardEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ClipboardEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_ClipboardEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ClipboardEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "owner";
+                    assert(it.offset_in_bytes == 16, "SDL_ClipboardEvent.owner has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_ClipboardEvent.owner has unexpected size % instead of 1", it.type.runtime_size);
+                case "num_mime_types";
+                    assert(it.offset_in_bytes == 20, "SDL_ClipboardEvent.num_mime_types has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ClipboardEvent.num_mime_types has unexpected size % instead of 4", it.type.runtime_size);
+                case "mime_types";
+                    assert(it.offset_in_bytes == 24, "SDL_ClipboardEvent.mime_types has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ClipboardEvent.mime_types has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_ClipboardEvent) == 32, "SDL_ClipboardEvent has size % instead of 32", size_of(SDL_ClipboardEvent));
     }
 
     {
-        instance: SDL_SensorEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_SensorEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_SensorEvent.type)) == 4, "SDL_SensorEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_SensorEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_SensorEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_SensorEvent.reserved)) == 4, "SDL_SensorEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_SensorEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_SensorEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_SensorEvent.timestamp)) == 8, "SDL_SensorEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_SensorEvent.timestamp)));
-        assert(((cast(*void)(*instance.which)) - cast(*void)(*instance)) == 16, "SDL_SensorEvent.which has unexpected offset % instead of 16", ((cast(*void)(*instance.which)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_SensorEvent.which)) == 4, "SDL_SensorEvent.which has unexpected size % instead of 4", size_of(type_of(SDL_SensorEvent.which)));
-        assert(((cast(*void)(*instance.data)) - cast(*void)(*instance)) == 20, "SDL_SensorEvent.data has unexpected offset % instead of 20", ((cast(*void)(*instance.data)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_SensorEvent.data)) == 24, "SDL_SensorEvent.data has unexpected size % instead of 24", size_of(type_of(SDL_SensorEvent.data)));
-        assert(((cast(*void)(*instance.sensor_timestamp)) - cast(*void)(*instance)) == 48, "SDL_SensorEvent.sensor_timestamp has unexpected offset % instead of 48", ((cast(*void)(*instance.sensor_timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_SensorEvent.sensor_timestamp)) == 8, "SDL_SensorEvent.sensor_timestamp has unexpected size % instead of 8", size_of(type_of(SDL_SensorEvent.sensor_timestamp)));
+        info := type_info(SDL_SensorEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_SensorEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_SensorEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_SensorEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_SensorEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_SensorEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_SensorEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "which";
+                    assert(it.offset_in_bytes == 16, "SDL_SensorEvent.which has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_SensorEvent.which has unexpected size % instead of 4", it.type.runtime_size);
+                case "data";
+                    assert(it.offset_in_bytes == 20, "SDL_SensorEvent.data has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_SensorEvent.data has unexpected size % instead of 24", it.type.runtime_size);
+                case "sensor_timestamp";
+                    assert(it.offset_in_bytes == 48, "SDL_SensorEvent.sensor_timestamp has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_SensorEvent.sensor_timestamp has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_SensorEvent) == 56, "SDL_SensorEvent has size % instead of 56", size_of(SDL_SensorEvent));
     }
 
     {
-        instance: SDL_QuitEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_QuitEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_QuitEvent.type)) == 4, "SDL_QuitEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_QuitEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_QuitEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_QuitEvent.reserved)) == 4, "SDL_QuitEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_QuitEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_QuitEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_QuitEvent.timestamp)) == 8, "SDL_QuitEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_QuitEvent.timestamp)));
+        info := type_info(SDL_QuitEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_QuitEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_QuitEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_QuitEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_QuitEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_QuitEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_QuitEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_QuitEvent) == 16, "SDL_QuitEvent has size % instead of 16", size_of(SDL_QuitEvent));
     }
 
     {
-        instance: SDL_UserEvent;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_UserEvent.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_UserEvent.type)) == 4, "SDL_UserEvent.type has unexpected size % instead of 4", size_of(type_of(SDL_UserEvent.type)));
-        assert(((cast(*void)(*instance.reserved)) - cast(*void)(*instance)) == 4, "SDL_UserEvent.reserved has unexpected offset % instead of 4", ((cast(*void)(*instance.reserved)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_UserEvent.reserved)) == 4, "SDL_UserEvent.reserved has unexpected size % instead of 4", size_of(type_of(SDL_UserEvent.reserved)));
-        assert(((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)) == 8, "SDL_UserEvent.timestamp has unexpected offset % instead of 8", ((cast(*void)(*instance.timestamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_UserEvent.timestamp)) == 8, "SDL_UserEvent.timestamp has unexpected size % instead of 8", size_of(type_of(SDL_UserEvent.timestamp)));
-        assert(((cast(*void)(*instance.windowID)) - cast(*void)(*instance)) == 16, "SDL_UserEvent.windowID has unexpected offset % instead of 16", ((cast(*void)(*instance.windowID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_UserEvent.windowID)) == 4, "SDL_UserEvent.windowID has unexpected size % instead of 4", size_of(type_of(SDL_UserEvent.windowID)));
-        assert(((cast(*void)(*instance.code)) - cast(*void)(*instance)) == 20, "SDL_UserEvent.code has unexpected offset % instead of 20", ((cast(*void)(*instance.code)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_UserEvent.code)) == 4, "SDL_UserEvent.code has unexpected size % instead of 4", size_of(type_of(SDL_UserEvent.code)));
-        assert(((cast(*void)(*instance.data1)) - cast(*void)(*instance)) == 24, "SDL_UserEvent.data1 has unexpected offset % instead of 24", ((cast(*void)(*instance.data1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_UserEvent.data1)) == 8, "SDL_UserEvent.data1 has unexpected size % instead of 8", size_of(type_of(SDL_UserEvent.data1)));
-        assert(((cast(*void)(*instance.data2)) - cast(*void)(*instance)) == 32, "SDL_UserEvent.data2 has unexpected offset % instead of 32", ((cast(*void)(*instance.data2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_UserEvent.data2)) == 8, "SDL_UserEvent.data2 has unexpected size % instead of 8", size_of(type_of(SDL_UserEvent.data2)));
+        info := type_info(SDL_UserEvent);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_UserEvent.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_UserEvent.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "reserved";
+                    assert(it.offset_in_bytes == 4, "SDL_UserEvent.reserved has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_UserEvent.reserved has unexpected size % instead of 4", it.type.runtime_size);
+                case "timestamp";
+                    assert(it.offset_in_bytes == 8, "SDL_UserEvent.timestamp has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_UserEvent.timestamp has unexpected size % instead of 8", it.type.runtime_size);
+                case "windowID";
+                    assert(it.offset_in_bytes == 16, "SDL_UserEvent.windowID has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_UserEvent.windowID has unexpected size % instead of 4", it.type.runtime_size);
+                case "code";
+                    assert(it.offset_in_bytes == 20, "SDL_UserEvent.code has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_UserEvent.code has unexpected size % instead of 4", it.type.runtime_size);
+                case "data1";
+                    assert(it.offset_in_bytes == 24, "SDL_UserEvent.data1 has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_UserEvent.data1 has unexpected size % instead of 8", it.type.runtime_size);
+                case "data2";
+                    assert(it.offset_in_bytes == 32, "SDL_UserEvent.data2 has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_UserEvent.data2 has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_UserEvent) == 40, "SDL_UserEvent has size % instead of 40", size_of(SDL_UserEvent));
     }
 
     {
-        instance: SDL_Event;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_Event.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.type)) == 4, "SDL_Event.type has unexpected size % instead of 4", size_of(type_of(SDL_Event.type)));
-        assert(((cast(*void)(*instance.common)) - cast(*void)(*instance)) == 0, "SDL_Event.common has unexpected offset % instead of 0", ((cast(*void)(*instance.common)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.common)) == 16, "SDL_Event.common has unexpected size % instead of 16", size_of(type_of(SDL_Event.common)));
-        assert(((cast(*void)(*instance.display)) - cast(*void)(*instance)) == 0, "SDL_Event.display has unexpected offset % instead of 0", ((cast(*void)(*instance.display)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.display)) == 32, "SDL_Event.display has unexpected size % instead of 32", size_of(type_of(SDL_Event.display)));
-        assert(((cast(*void)(*instance.window)) - cast(*void)(*instance)) == 0, "SDL_Event.window has unexpected offset % instead of 0", ((cast(*void)(*instance.window)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.window)) == 32, "SDL_Event.window has unexpected size % instead of 32", size_of(type_of(SDL_Event.window)));
-        assert(((cast(*void)(*instance.kdevice)) - cast(*void)(*instance)) == 0, "SDL_Event.kdevice has unexpected offset % instead of 0", ((cast(*void)(*instance.kdevice)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.kdevice)) == 24, "SDL_Event.kdevice has unexpected size % instead of 24", size_of(type_of(SDL_Event.kdevice)));
-        assert(((cast(*void)(*instance.key)) - cast(*void)(*instance)) == 0, "SDL_Event.key has unexpected offset % instead of 0", ((cast(*void)(*instance.key)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.key)) == 40, "SDL_Event.key has unexpected size % instead of 40", size_of(type_of(SDL_Event.key)));
-        assert(((cast(*void)(*instance.edit)) - cast(*void)(*instance)) == 0, "SDL_Event.edit has unexpected offset % instead of 0", ((cast(*void)(*instance.edit)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.edit)) == 40, "SDL_Event.edit has unexpected size % instead of 40", size_of(type_of(SDL_Event.edit)));
-        assert(((cast(*void)(*instance.edit_candidates)) - cast(*void)(*instance)) == 0, "SDL_Event.edit_candidates has unexpected offset % instead of 0", ((cast(*void)(*instance.edit_candidates)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.edit_candidates)) == 48, "SDL_Event.edit_candidates has unexpected size % instead of 48", size_of(type_of(SDL_Event.edit_candidates)));
-        assert(((cast(*void)(*instance.text)) - cast(*void)(*instance)) == 0, "SDL_Event.text has unexpected offset % instead of 0", ((cast(*void)(*instance.text)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.text)) == 32, "SDL_Event.text has unexpected size % instead of 32", size_of(type_of(SDL_Event.text)));
-        assert(((cast(*void)(*instance.mdevice)) - cast(*void)(*instance)) == 0, "SDL_Event.mdevice has unexpected offset % instead of 0", ((cast(*void)(*instance.mdevice)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.mdevice)) == 24, "SDL_Event.mdevice has unexpected size % instead of 24", size_of(type_of(SDL_Event.mdevice)));
-        assert(((cast(*void)(*instance.motion)) - cast(*void)(*instance)) == 0, "SDL_Event.motion has unexpected offset % instead of 0", ((cast(*void)(*instance.motion)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.motion)) == 48, "SDL_Event.motion has unexpected size % instead of 48", size_of(type_of(SDL_Event.motion)));
-        assert(((cast(*void)(*instance.button)) - cast(*void)(*instance)) == 0, "SDL_Event.button has unexpected offset % instead of 0", ((cast(*void)(*instance.button)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.button)) == 40, "SDL_Event.button has unexpected size % instead of 40", size_of(type_of(SDL_Event.button)));
-        assert(((cast(*void)(*instance.wheel)) - cast(*void)(*instance)) == 0, "SDL_Event.wheel has unexpected offset % instead of 0", ((cast(*void)(*instance.wheel)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.wheel)) == 48, "SDL_Event.wheel has unexpected size % instead of 48", size_of(type_of(SDL_Event.wheel)));
-        assert(((cast(*void)(*instance.jdevice)) - cast(*void)(*instance)) == 0, "SDL_Event.jdevice has unexpected offset % instead of 0", ((cast(*void)(*instance.jdevice)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.jdevice)) == 24, "SDL_Event.jdevice has unexpected size % instead of 24", size_of(type_of(SDL_Event.jdevice)));
-        assert(((cast(*void)(*instance.jaxis)) - cast(*void)(*instance)) == 0, "SDL_Event.jaxis has unexpected offset % instead of 0", ((cast(*void)(*instance.jaxis)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.jaxis)) == 32, "SDL_Event.jaxis has unexpected size % instead of 32", size_of(type_of(SDL_Event.jaxis)));
-        assert(((cast(*void)(*instance.jball)) - cast(*void)(*instance)) == 0, "SDL_Event.jball has unexpected offset % instead of 0", ((cast(*void)(*instance.jball)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.jball)) == 32, "SDL_Event.jball has unexpected size % instead of 32", size_of(type_of(SDL_Event.jball)));
-        assert(((cast(*void)(*instance.jhat)) - cast(*void)(*instance)) == 0, "SDL_Event.jhat has unexpected offset % instead of 0", ((cast(*void)(*instance.jhat)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.jhat)) == 24, "SDL_Event.jhat has unexpected size % instead of 24", size_of(type_of(SDL_Event.jhat)));
-        assert(((cast(*void)(*instance.jbutton)) - cast(*void)(*instance)) == 0, "SDL_Event.jbutton has unexpected offset % instead of 0", ((cast(*void)(*instance.jbutton)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.jbutton)) == 24, "SDL_Event.jbutton has unexpected size % instead of 24", size_of(type_of(SDL_Event.jbutton)));
-        assert(((cast(*void)(*instance.jbattery)) - cast(*void)(*instance)) == 0, "SDL_Event.jbattery has unexpected offset % instead of 0", ((cast(*void)(*instance.jbattery)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.jbattery)) == 32, "SDL_Event.jbattery has unexpected size % instead of 32", size_of(type_of(SDL_Event.jbattery)));
-        assert(((cast(*void)(*instance.gdevice)) - cast(*void)(*instance)) == 0, "SDL_Event.gdevice has unexpected offset % instead of 0", ((cast(*void)(*instance.gdevice)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.gdevice)) == 24, "SDL_Event.gdevice has unexpected size % instead of 24", size_of(type_of(SDL_Event.gdevice)));
-        assert(((cast(*void)(*instance.gaxis)) - cast(*void)(*instance)) == 0, "SDL_Event.gaxis has unexpected offset % instead of 0", ((cast(*void)(*instance.gaxis)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.gaxis)) == 32, "SDL_Event.gaxis has unexpected size % instead of 32", size_of(type_of(SDL_Event.gaxis)));
-        assert(((cast(*void)(*instance.gbutton)) - cast(*void)(*instance)) == 0, "SDL_Event.gbutton has unexpected offset % instead of 0", ((cast(*void)(*instance.gbutton)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.gbutton)) == 24, "SDL_Event.gbutton has unexpected size % instead of 24", size_of(type_of(SDL_Event.gbutton)));
-        assert(((cast(*void)(*instance.gtouchpad)) - cast(*void)(*instance)) == 0, "SDL_Event.gtouchpad has unexpected offset % instead of 0", ((cast(*void)(*instance.gtouchpad)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.gtouchpad)) == 40, "SDL_Event.gtouchpad has unexpected size % instead of 40", size_of(type_of(SDL_Event.gtouchpad)));
-        assert(((cast(*void)(*instance.gsensor)) - cast(*void)(*instance)) == 0, "SDL_Event.gsensor has unexpected offset % instead of 0", ((cast(*void)(*instance.gsensor)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.gsensor)) == 48, "SDL_Event.gsensor has unexpected size % instead of 48", size_of(type_of(SDL_Event.gsensor)));
-        assert(((cast(*void)(*instance.adevice)) - cast(*void)(*instance)) == 0, "SDL_Event.adevice has unexpected offset % instead of 0", ((cast(*void)(*instance.adevice)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.adevice)) == 24, "SDL_Event.adevice has unexpected size % instead of 24", size_of(type_of(SDL_Event.adevice)));
-        assert(((cast(*void)(*instance.cdevice)) - cast(*void)(*instance)) == 0, "SDL_Event.cdevice has unexpected offset % instead of 0", ((cast(*void)(*instance.cdevice)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.cdevice)) == 24, "SDL_Event.cdevice has unexpected size % instead of 24", size_of(type_of(SDL_Event.cdevice)));
-        assert(((cast(*void)(*instance.sensor)) - cast(*void)(*instance)) == 0, "SDL_Event.sensor has unexpected offset % instead of 0", ((cast(*void)(*instance.sensor)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.sensor)) == 56, "SDL_Event.sensor has unexpected size % instead of 56", size_of(type_of(SDL_Event.sensor)));
-        assert(((cast(*void)(*instance.quit)) - cast(*void)(*instance)) == 0, "SDL_Event.quit has unexpected offset % instead of 0", ((cast(*void)(*instance.quit)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.quit)) == 16, "SDL_Event.quit has unexpected size % instead of 16", size_of(type_of(SDL_Event.quit)));
-        assert(((cast(*void)(*instance.user)) - cast(*void)(*instance)) == 0, "SDL_Event.user has unexpected offset % instead of 0", ((cast(*void)(*instance.user)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.user)) == 40, "SDL_Event.user has unexpected size % instead of 40", size_of(type_of(SDL_Event.user)));
-        assert(((cast(*void)(*instance.tfinger)) - cast(*void)(*instance)) == 0, "SDL_Event.tfinger has unexpected offset % instead of 0", ((cast(*void)(*instance.tfinger)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.tfinger)) == 56, "SDL_Event.tfinger has unexpected size % instead of 56", size_of(type_of(SDL_Event.tfinger)));
-        assert(((cast(*void)(*instance.pproximity)) - cast(*void)(*instance)) == 0, "SDL_Event.pproximity has unexpected offset % instead of 0", ((cast(*void)(*instance.pproximity)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.pproximity)) == 24, "SDL_Event.pproximity has unexpected size % instead of 24", size_of(type_of(SDL_Event.pproximity)));
-        assert(((cast(*void)(*instance.ptouch)) - cast(*void)(*instance)) == 0, "SDL_Event.ptouch has unexpected offset % instead of 0", ((cast(*void)(*instance.ptouch)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.ptouch)) == 40, "SDL_Event.ptouch has unexpected size % instead of 40", size_of(type_of(SDL_Event.ptouch)));
-        assert(((cast(*void)(*instance.pmotion)) - cast(*void)(*instance)) == 0, "SDL_Event.pmotion has unexpected offset % instead of 0", ((cast(*void)(*instance.pmotion)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.pmotion)) == 40, "SDL_Event.pmotion has unexpected size % instead of 40", size_of(type_of(SDL_Event.pmotion)));
-        assert(((cast(*void)(*instance.pbutton)) - cast(*void)(*instance)) == 0, "SDL_Event.pbutton has unexpected offset % instead of 0", ((cast(*void)(*instance.pbutton)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.pbutton)) == 40, "SDL_Event.pbutton has unexpected size % instead of 40", size_of(type_of(SDL_Event.pbutton)));
-        assert(((cast(*void)(*instance.paxis)) - cast(*void)(*instance)) == 0, "SDL_Event.paxis has unexpected offset % instead of 0", ((cast(*void)(*instance.paxis)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.paxis)) == 48, "SDL_Event.paxis has unexpected size % instead of 48", size_of(type_of(SDL_Event.paxis)));
-        assert(((cast(*void)(*instance.render)) - cast(*void)(*instance)) == 0, "SDL_Event.render has unexpected offset % instead of 0", ((cast(*void)(*instance.render)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.render)) == 24, "SDL_Event.render has unexpected size % instead of 24", size_of(type_of(SDL_Event.render)));
-        assert(((cast(*void)(*instance.drop)) - cast(*void)(*instance)) == 0, "SDL_Event.drop has unexpected offset % instead of 0", ((cast(*void)(*instance.drop)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.drop)) == 48, "SDL_Event.drop has unexpected size % instead of 48", size_of(type_of(SDL_Event.drop)));
-        assert(((cast(*void)(*instance.clipboard)) - cast(*void)(*instance)) == 0, "SDL_Event.clipboard has unexpected offset % instead of 0", ((cast(*void)(*instance.clipboard)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.clipboard)) == 32, "SDL_Event.clipboard has unexpected size % instead of 32", size_of(type_of(SDL_Event.clipboard)));
-        assert(((cast(*void)(*instance.padding)) - cast(*void)(*instance)) == 0, "SDL_Event.padding has unexpected offset % instead of 0", ((cast(*void)(*instance.padding)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Event.padding)) == 128, "SDL_Event.padding has unexpected size % instead of 128", size_of(type_of(SDL_Event.padding)));
+        info := type_info(SDL_Event);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Event.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "common";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.common has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_Event.common has unexpected size % instead of 16", it.type.runtime_size);
+                case "display";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.display has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 32, "SDL_Event.display has unexpected size % instead of 32", it.type.runtime_size);
+                case "window";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.window has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 32, "SDL_Event.window has unexpected size % instead of 32", it.type.runtime_size);
+                case "kdevice";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.kdevice has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_Event.kdevice has unexpected size % instead of 24", it.type.runtime_size);
+                case "key";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.key has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 40, "SDL_Event.key has unexpected size % instead of 40", it.type.runtime_size);
+                case "edit";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.edit has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 40, "SDL_Event.edit has unexpected size % instead of 40", it.type.runtime_size);
+                case "edit_candidates";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.edit_candidates has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 48, "SDL_Event.edit_candidates has unexpected size % instead of 48", it.type.runtime_size);
+                case "text";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.text has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 32, "SDL_Event.text has unexpected size % instead of 32", it.type.runtime_size);
+                case "mdevice";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.mdevice has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_Event.mdevice has unexpected size % instead of 24", it.type.runtime_size);
+                case "motion";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.motion has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 48, "SDL_Event.motion has unexpected size % instead of 48", it.type.runtime_size);
+                case "button";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.button has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 40, "SDL_Event.button has unexpected size % instead of 40", it.type.runtime_size);
+                case "wheel";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.wheel has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 48, "SDL_Event.wheel has unexpected size % instead of 48", it.type.runtime_size);
+                case "jdevice";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.jdevice has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_Event.jdevice has unexpected size % instead of 24", it.type.runtime_size);
+                case "jaxis";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.jaxis has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 32, "SDL_Event.jaxis has unexpected size % instead of 32", it.type.runtime_size);
+                case "jball";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.jball has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 32, "SDL_Event.jball has unexpected size % instead of 32", it.type.runtime_size);
+                case "jhat";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.jhat has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_Event.jhat has unexpected size % instead of 24", it.type.runtime_size);
+                case "jbutton";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.jbutton has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_Event.jbutton has unexpected size % instead of 24", it.type.runtime_size);
+                case "jbattery";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.jbattery has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 32, "SDL_Event.jbattery has unexpected size % instead of 32", it.type.runtime_size);
+                case "gdevice";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.gdevice has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_Event.gdevice has unexpected size % instead of 24", it.type.runtime_size);
+                case "gaxis";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.gaxis has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 32, "SDL_Event.gaxis has unexpected size % instead of 32", it.type.runtime_size);
+                case "gbutton";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.gbutton has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_Event.gbutton has unexpected size % instead of 24", it.type.runtime_size);
+                case "gtouchpad";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.gtouchpad has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 40, "SDL_Event.gtouchpad has unexpected size % instead of 40", it.type.runtime_size);
+                case "gsensor";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.gsensor has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 48, "SDL_Event.gsensor has unexpected size % instead of 48", it.type.runtime_size);
+                case "adevice";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.adevice has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_Event.adevice has unexpected size % instead of 24", it.type.runtime_size);
+                case "cdevice";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.cdevice has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_Event.cdevice has unexpected size % instead of 24", it.type.runtime_size);
+                case "sensor";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.sensor has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 56, "SDL_Event.sensor has unexpected size % instead of 56", it.type.runtime_size);
+                case "quit";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.quit has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_Event.quit has unexpected size % instead of 16", it.type.runtime_size);
+                case "user";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.user has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 40, "SDL_Event.user has unexpected size % instead of 40", it.type.runtime_size);
+                case "tfinger";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.tfinger has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 56, "SDL_Event.tfinger has unexpected size % instead of 56", it.type.runtime_size);
+                case "pproximity";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.pproximity has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_Event.pproximity has unexpected size % instead of 24", it.type.runtime_size);
+                case "ptouch";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.ptouch has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 40, "SDL_Event.ptouch has unexpected size % instead of 40", it.type.runtime_size);
+                case "pmotion";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.pmotion has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 40, "SDL_Event.pmotion has unexpected size % instead of 40", it.type.runtime_size);
+                case "pbutton";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.pbutton has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 40, "SDL_Event.pbutton has unexpected size % instead of 40", it.type.runtime_size);
+                case "paxis";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.paxis has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 48, "SDL_Event.paxis has unexpected size % instead of 48", it.type.runtime_size);
+                case "render";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.render has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_Event.render has unexpected size % instead of 24", it.type.runtime_size);
+                case "drop";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.drop has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 48, "SDL_Event.drop has unexpected size % instead of 48", it.type.runtime_size);
+                case "clipboard";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.clipboard has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 32, "SDL_Event.clipboard has unexpected size % instead of 32", it.type.runtime_size);
+                case "padding";
+                    assert(it.offset_in_bytes == 0, "SDL_Event.padding has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 128, "SDL_Event.padding has unexpected size % instead of 128", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_Event) == 128, "SDL_Event has size % instead of 128", size_of(SDL_Event));
     }
 
     {
-        instance: SDL_PathInfo;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_PathInfo.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PathInfo.type)) == 4, "SDL_PathInfo.type has unexpected size % instead of 4", size_of(type_of(SDL_PathInfo.type)));
-        assert(((cast(*void)(*instance.size)) - cast(*void)(*instance)) == 8, "SDL_PathInfo.size has unexpected offset % instead of 8", ((cast(*void)(*instance.size)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PathInfo.size)) == 8, "SDL_PathInfo.size has unexpected size % instead of 8", size_of(type_of(SDL_PathInfo.size)));
-        assert(((cast(*void)(*instance.create_time)) - cast(*void)(*instance)) == 16, "SDL_PathInfo.create_time has unexpected offset % instead of 16", ((cast(*void)(*instance.create_time)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PathInfo.create_time)) == 8, "SDL_PathInfo.create_time has unexpected size % instead of 8", size_of(type_of(SDL_PathInfo.create_time)));
-        assert(((cast(*void)(*instance.modify_time)) - cast(*void)(*instance)) == 24, "SDL_PathInfo.modify_time has unexpected offset % instead of 24", ((cast(*void)(*instance.modify_time)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PathInfo.modify_time)) == 8, "SDL_PathInfo.modify_time has unexpected size % instead of 8", size_of(type_of(SDL_PathInfo.modify_time)));
-        assert(((cast(*void)(*instance.access_time)) - cast(*void)(*instance)) == 32, "SDL_PathInfo.access_time has unexpected offset % instead of 32", ((cast(*void)(*instance.access_time)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_PathInfo.access_time)) == 8, "SDL_PathInfo.access_time has unexpected size % instead of 8", size_of(type_of(SDL_PathInfo.access_time)));
+        info := type_info(SDL_PathInfo);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_PathInfo.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_PathInfo.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "size";
+                    assert(it.offset_in_bytes == 8, "SDL_PathInfo.size has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_PathInfo.size has unexpected size % instead of 8", it.type.runtime_size);
+                case "create_time";
+                    assert(it.offset_in_bytes == 16, "SDL_PathInfo.create_time has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_PathInfo.create_time has unexpected size % instead of 8", it.type.runtime_size);
+                case "modify_time";
+                    assert(it.offset_in_bytes == 24, "SDL_PathInfo.modify_time has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_PathInfo.modify_time has unexpected size % instead of 8", it.type.runtime_size);
+                case "access_time";
+                    assert(it.offset_in_bytes == 32, "SDL_PathInfo.access_time has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_PathInfo.access_time has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_PathInfo) == 40, "SDL_PathInfo has size % instead of 40", size_of(SDL_PathInfo));
     }
 
     {
-        instance: SDL_GPUViewport;
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 0, "SDL_GPUViewport.x has unexpected offset % instead of 0", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUViewport.x)) == 4, "SDL_GPUViewport.x has unexpected size % instead of 4", size_of(type_of(SDL_GPUViewport.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 4, "SDL_GPUViewport.y has unexpected offset % instead of 4", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUViewport.y)) == 4, "SDL_GPUViewport.y has unexpected size % instead of 4", size_of(type_of(SDL_GPUViewport.y)));
-        assert(((cast(*void)(*instance.w)) - cast(*void)(*instance)) == 8, "SDL_GPUViewport.w has unexpected offset % instead of 8", ((cast(*void)(*instance.w)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUViewport.w)) == 4, "SDL_GPUViewport.w has unexpected size % instead of 4", size_of(type_of(SDL_GPUViewport.w)));
-        assert(((cast(*void)(*instance.h)) - cast(*void)(*instance)) == 12, "SDL_GPUViewport.h has unexpected offset % instead of 12", ((cast(*void)(*instance.h)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUViewport.h)) == 4, "SDL_GPUViewport.h has unexpected size % instead of 4", size_of(type_of(SDL_GPUViewport.h)));
-        assert(((cast(*void)(*instance.min_depth)) - cast(*void)(*instance)) == 16, "SDL_GPUViewport.min_depth has unexpected offset % instead of 16", ((cast(*void)(*instance.min_depth)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUViewport.min_depth)) == 4, "SDL_GPUViewport.min_depth has unexpected size % instead of 4", size_of(type_of(SDL_GPUViewport.min_depth)));
-        assert(((cast(*void)(*instance.max_depth)) - cast(*void)(*instance)) == 20, "SDL_GPUViewport.max_depth has unexpected offset % instead of 20", ((cast(*void)(*instance.max_depth)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUViewport.max_depth)) == 4, "SDL_GPUViewport.max_depth has unexpected size % instead of 4", size_of(type_of(SDL_GPUViewport.max_depth)));
+        info := type_info(SDL_GPUViewport);
+        for info.members {
+            if it.name == {
+                case "x";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUViewport.x has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUViewport.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUViewport.y has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUViewport.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "w";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUViewport.w has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUViewport.w has unexpected size % instead of 4", it.type.runtime_size);
+                case "h";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUViewport.h has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUViewport.h has unexpected size % instead of 4", it.type.runtime_size);
+                case "min_depth";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUViewport.min_depth has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUViewport.min_depth has unexpected size % instead of 4", it.type.runtime_size);
+                case "max_depth";
+                    assert(it.offset_in_bytes == 20, "SDL_GPUViewport.max_depth has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUViewport.max_depth has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUViewport) == 24, "SDL_GPUViewport has size % instead of 24", size_of(SDL_GPUViewport));
     }
 
     {
-        instance: SDL_GPUTextureTransferInfo;
-        assert(((cast(*void)(*instance.transfer_buffer)) - cast(*void)(*instance)) == 0, "SDL_GPUTextureTransferInfo.transfer_buffer has unexpected offset % instead of 0", ((cast(*void)(*instance.transfer_buffer)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureTransferInfo.transfer_buffer)) == 8, "SDL_GPUTextureTransferInfo.transfer_buffer has unexpected size % instead of 8", size_of(type_of(SDL_GPUTextureTransferInfo.transfer_buffer)));
-        assert(((cast(*void)(*instance.offset)) - cast(*void)(*instance)) == 8, "SDL_GPUTextureTransferInfo.offset has unexpected offset % instead of 8", ((cast(*void)(*instance.offset)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureTransferInfo.offset)) == 4, "SDL_GPUTextureTransferInfo.offset has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureTransferInfo.offset)));
-        assert(((cast(*void)(*instance.pixels_per_row)) - cast(*void)(*instance)) == 12, "SDL_GPUTextureTransferInfo.pixels_per_row has unexpected offset % instead of 12", ((cast(*void)(*instance.pixels_per_row)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureTransferInfo.pixels_per_row)) == 4, "SDL_GPUTextureTransferInfo.pixels_per_row has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureTransferInfo.pixels_per_row)));
-        assert(((cast(*void)(*instance.rows_per_layer)) - cast(*void)(*instance)) == 16, "SDL_GPUTextureTransferInfo.rows_per_layer has unexpected offset % instead of 16", ((cast(*void)(*instance.rows_per_layer)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureTransferInfo.rows_per_layer)) == 4, "SDL_GPUTextureTransferInfo.rows_per_layer has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureTransferInfo.rows_per_layer)));
+        info := type_info(SDL_GPUTextureTransferInfo);
+        for info.members {
+            if it.name == {
+                case "transfer_buffer";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUTextureTransferInfo.transfer_buffer has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUTextureTransferInfo.transfer_buffer has unexpected size % instead of 8", it.type.runtime_size);
+                case "offset";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUTextureTransferInfo.offset has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureTransferInfo.offset has unexpected size % instead of 4", it.type.runtime_size);
+                case "pixels_per_row";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUTextureTransferInfo.pixels_per_row has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureTransferInfo.pixels_per_row has unexpected size % instead of 4", it.type.runtime_size);
+                case "rows_per_layer";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUTextureTransferInfo.rows_per_layer has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureTransferInfo.rows_per_layer has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUTextureTransferInfo) == 24, "SDL_GPUTextureTransferInfo has size % instead of 24", size_of(SDL_GPUTextureTransferInfo));
     }
 
     {
-        instance: SDL_GPUTransferBufferLocation;
-        assert(((cast(*void)(*instance.transfer_buffer)) - cast(*void)(*instance)) == 0, "SDL_GPUTransferBufferLocation.transfer_buffer has unexpected offset % instead of 0", ((cast(*void)(*instance.transfer_buffer)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTransferBufferLocation.transfer_buffer)) == 8, "SDL_GPUTransferBufferLocation.transfer_buffer has unexpected size % instead of 8", size_of(type_of(SDL_GPUTransferBufferLocation.transfer_buffer)));
-        assert(((cast(*void)(*instance.offset)) - cast(*void)(*instance)) == 8, "SDL_GPUTransferBufferLocation.offset has unexpected offset % instead of 8", ((cast(*void)(*instance.offset)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTransferBufferLocation.offset)) == 4, "SDL_GPUTransferBufferLocation.offset has unexpected size % instead of 4", size_of(type_of(SDL_GPUTransferBufferLocation.offset)));
+        info := type_info(SDL_GPUTransferBufferLocation);
+        for info.members {
+            if it.name == {
+                case "transfer_buffer";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUTransferBufferLocation.transfer_buffer has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUTransferBufferLocation.transfer_buffer has unexpected size % instead of 8", it.type.runtime_size);
+                case "offset";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUTransferBufferLocation.offset has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTransferBufferLocation.offset has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUTransferBufferLocation) == 16, "SDL_GPUTransferBufferLocation has size % instead of 16", size_of(SDL_GPUTransferBufferLocation));
     }
 
     {
-        instance: SDL_GPUTextureLocation;
-        assert(((cast(*void)(*instance.texture)) - cast(*void)(*instance)) == 0, "SDL_GPUTextureLocation.texture has unexpected offset % instead of 0", ((cast(*void)(*instance.texture)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureLocation.texture)) == 8, "SDL_GPUTextureLocation.texture has unexpected size % instead of 8", size_of(type_of(SDL_GPUTextureLocation.texture)));
-        assert(((cast(*void)(*instance.mip_level)) - cast(*void)(*instance)) == 8, "SDL_GPUTextureLocation.mip_level has unexpected offset % instead of 8", ((cast(*void)(*instance.mip_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureLocation.mip_level)) == 4, "SDL_GPUTextureLocation.mip_level has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureLocation.mip_level)));
-        assert(((cast(*void)(*instance.layer)) - cast(*void)(*instance)) == 12, "SDL_GPUTextureLocation.layer has unexpected offset % instead of 12", ((cast(*void)(*instance.layer)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureLocation.layer)) == 4, "SDL_GPUTextureLocation.layer has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureLocation.layer)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 16, "SDL_GPUTextureLocation.x has unexpected offset % instead of 16", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureLocation.x)) == 4, "SDL_GPUTextureLocation.x has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureLocation.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 20, "SDL_GPUTextureLocation.y has unexpected offset % instead of 20", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureLocation.y)) == 4, "SDL_GPUTextureLocation.y has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureLocation.y)));
-        assert(((cast(*void)(*instance.z)) - cast(*void)(*instance)) == 24, "SDL_GPUTextureLocation.z has unexpected offset % instead of 24", ((cast(*void)(*instance.z)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureLocation.z)) == 4, "SDL_GPUTextureLocation.z has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureLocation.z)));
+        info := type_info(SDL_GPUTextureLocation);
+        for info.members {
+            if it.name == {
+                case "texture";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUTextureLocation.texture has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUTextureLocation.texture has unexpected size % instead of 8", it.type.runtime_size);
+                case "mip_level";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUTextureLocation.mip_level has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureLocation.mip_level has unexpected size % instead of 4", it.type.runtime_size);
+                case "layer";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUTextureLocation.layer has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureLocation.layer has unexpected size % instead of 4", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUTextureLocation.x has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureLocation.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 20, "SDL_GPUTextureLocation.y has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureLocation.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "z";
+                    assert(it.offset_in_bytes == 24, "SDL_GPUTextureLocation.z has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureLocation.z has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUTextureLocation) == 32, "SDL_GPUTextureLocation has size % instead of 32", size_of(SDL_GPUTextureLocation));
     }
 
     {
-        instance: SDL_GPUTextureRegion;
-        assert(((cast(*void)(*instance.texture)) - cast(*void)(*instance)) == 0, "SDL_GPUTextureRegion.texture has unexpected offset % instead of 0", ((cast(*void)(*instance.texture)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureRegion.texture)) == 8, "SDL_GPUTextureRegion.texture has unexpected size % instead of 8", size_of(type_of(SDL_GPUTextureRegion.texture)));
-        assert(((cast(*void)(*instance.mip_level)) - cast(*void)(*instance)) == 8, "SDL_GPUTextureRegion.mip_level has unexpected offset % instead of 8", ((cast(*void)(*instance.mip_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureRegion.mip_level)) == 4, "SDL_GPUTextureRegion.mip_level has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureRegion.mip_level)));
-        assert(((cast(*void)(*instance.layer)) - cast(*void)(*instance)) == 12, "SDL_GPUTextureRegion.layer has unexpected offset % instead of 12", ((cast(*void)(*instance.layer)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureRegion.layer)) == 4, "SDL_GPUTextureRegion.layer has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureRegion.layer)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 16, "SDL_GPUTextureRegion.x has unexpected offset % instead of 16", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureRegion.x)) == 4, "SDL_GPUTextureRegion.x has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureRegion.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 20, "SDL_GPUTextureRegion.y has unexpected offset % instead of 20", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureRegion.y)) == 4, "SDL_GPUTextureRegion.y has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureRegion.y)));
-        assert(((cast(*void)(*instance.z)) - cast(*void)(*instance)) == 24, "SDL_GPUTextureRegion.z has unexpected offset % instead of 24", ((cast(*void)(*instance.z)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureRegion.z)) == 4, "SDL_GPUTextureRegion.z has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureRegion.z)));
-        assert(((cast(*void)(*instance.w)) - cast(*void)(*instance)) == 28, "SDL_GPUTextureRegion.w has unexpected offset % instead of 28", ((cast(*void)(*instance.w)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureRegion.w)) == 4, "SDL_GPUTextureRegion.w has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureRegion.w)));
-        assert(((cast(*void)(*instance.h)) - cast(*void)(*instance)) == 32, "SDL_GPUTextureRegion.h has unexpected offset % instead of 32", ((cast(*void)(*instance.h)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureRegion.h)) == 4, "SDL_GPUTextureRegion.h has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureRegion.h)));
-        assert(((cast(*void)(*instance.d)) - cast(*void)(*instance)) == 36, "SDL_GPUTextureRegion.d has unexpected offset % instead of 36", ((cast(*void)(*instance.d)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureRegion.d)) == 4, "SDL_GPUTextureRegion.d has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureRegion.d)));
+        info := type_info(SDL_GPUTextureRegion);
+        for info.members {
+            if it.name == {
+                case "texture";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUTextureRegion.texture has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUTextureRegion.texture has unexpected size % instead of 8", it.type.runtime_size);
+                case "mip_level";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUTextureRegion.mip_level has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureRegion.mip_level has unexpected size % instead of 4", it.type.runtime_size);
+                case "layer";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUTextureRegion.layer has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureRegion.layer has unexpected size % instead of 4", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUTextureRegion.x has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureRegion.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 20, "SDL_GPUTextureRegion.y has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureRegion.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "z";
+                    assert(it.offset_in_bytes == 24, "SDL_GPUTextureRegion.z has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureRegion.z has unexpected size % instead of 4", it.type.runtime_size);
+                case "w";
+                    assert(it.offset_in_bytes == 28, "SDL_GPUTextureRegion.w has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureRegion.w has unexpected size % instead of 4", it.type.runtime_size);
+                case "h";
+                    assert(it.offset_in_bytes == 32, "SDL_GPUTextureRegion.h has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureRegion.h has unexpected size % instead of 4", it.type.runtime_size);
+                case "d";
+                    assert(it.offset_in_bytes == 36, "SDL_GPUTextureRegion.d has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureRegion.d has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUTextureRegion) == 40, "SDL_GPUTextureRegion has size % instead of 40", size_of(SDL_GPUTextureRegion));
     }
 
     {
-        instance: SDL_GPUBlitRegion;
-        assert(((cast(*void)(*instance.texture)) - cast(*void)(*instance)) == 0, "SDL_GPUBlitRegion.texture has unexpected offset % instead of 0", ((cast(*void)(*instance.texture)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitRegion.texture)) == 8, "SDL_GPUBlitRegion.texture has unexpected size % instead of 8", size_of(type_of(SDL_GPUBlitRegion.texture)));
-        assert(((cast(*void)(*instance.mip_level)) - cast(*void)(*instance)) == 8, "SDL_GPUBlitRegion.mip_level has unexpected offset % instead of 8", ((cast(*void)(*instance.mip_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitRegion.mip_level)) == 4, "SDL_GPUBlitRegion.mip_level has unexpected size % instead of 4", size_of(type_of(SDL_GPUBlitRegion.mip_level)));
-        assert(((cast(*void)(*instance.layer_or_depth_plane)) - cast(*void)(*instance)) == 12, "SDL_GPUBlitRegion.layer_or_depth_plane has unexpected offset % instead of 12", ((cast(*void)(*instance.layer_or_depth_plane)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitRegion.layer_or_depth_plane)) == 4, "SDL_GPUBlitRegion.layer_or_depth_plane has unexpected size % instead of 4", size_of(type_of(SDL_GPUBlitRegion.layer_or_depth_plane)));
-        assert(((cast(*void)(*instance.x)) - cast(*void)(*instance)) == 16, "SDL_GPUBlitRegion.x has unexpected offset % instead of 16", ((cast(*void)(*instance.x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitRegion.x)) == 4, "SDL_GPUBlitRegion.x has unexpected size % instead of 4", size_of(type_of(SDL_GPUBlitRegion.x)));
-        assert(((cast(*void)(*instance.y)) - cast(*void)(*instance)) == 20, "SDL_GPUBlitRegion.y has unexpected offset % instead of 20", ((cast(*void)(*instance.y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitRegion.y)) == 4, "SDL_GPUBlitRegion.y has unexpected size % instead of 4", size_of(type_of(SDL_GPUBlitRegion.y)));
-        assert(((cast(*void)(*instance.w)) - cast(*void)(*instance)) == 24, "SDL_GPUBlitRegion.w has unexpected offset % instead of 24", ((cast(*void)(*instance.w)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitRegion.w)) == 4, "SDL_GPUBlitRegion.w has unexpected size % instead of 4", size_of(type_of(SDL_GPUBlitRegion.w)));
-        assert(((cast(*void)(*instance.h)) - cast(*void)(*instance)) == 28, "SDL_GPUBlitRegion.h has unexpected offset % instead of 28", ((cast(*void)(*instance.h)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitRegion.h)) == 4, "SDL_GPUBlitRegion.h has unexpected size % instead of 4", size_of(type_of(SDL_GPUBlitRegion.h)));
+        info := type_info(SDL_GPUBlitRegion);
+        for info.members {
+            if it.name == {
+                case "texture";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUBlitRegion.texture has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUBlitRegion.texture has unexpected size % instead of 8", it.type.runtime_size);
+                case "mip_level";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUBlitRegion.mip_level has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBlitRegion.mip_level has unexpected size % instead of 4", it.type.runtime_size);
+                case "layer_or_depth_plane";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUBlitRegion.layer_or_depth_plane has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBlitRegion.layer_or_depth_plane has unexpected size % instead of 4", it.type.runtime_size);
+                case "x";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUBlitRegion.x has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBlitRegion.x has unexpected size % instead of 4", it.type.runtime_size);
+                case "y";
+                    assert(it.offset_in_bytes == 20, "SDL_GPUBlitRegion.y has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBlitRegion.y has unexpected size % instead of 4", it.type.runtime_size);
+                case "w";
+                    assert(it.offset_in_bytes == 24, "SDL_GPUBlitRegion.w has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBlitRegion.w has unexpected size % instead of 4", it.type.runtime_size);
+                case "h";
+                    assert(it.offset_in_bytes == 28, "SDL_GPUBlitRegion.h has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBlitRegion.h has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUBlitRegion) == 32, "SDL_GPUBlitRegion has size % instead of 32", size_of(SDL_GPUBlitRegion));
     }
 
     {
-        instance: SDL_GPUBufferLocation;
-        assert(((cast(*void)(*instance.buffer)) - cast(*void)(*instance)) == 0, "SDL_GPUBufferLocation.buffer has unexpected offset % instead of 0", ((cast(*void)(*instance.buffer)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBufferLocation.buffer)) == 8, "SDL_GPUBufferLocation.buffer has unexpected size % instead of 8", size_of(type_of(SDL_GPUBufferLocation.buffer)));
-        assert(((cast(*void)(*instance.offset)) - cast(*void)(*instance)) == 8, "SDL_GPUBufferLocation.offset has unexpected offset % instead of 8", ((cast(*void)(*instance.offset)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBufferLocation.offset)) == 4, "SDL_GPUBufferLocation.offset has unexpected size % instead of 4", size_of(type_of(SDL_GPUBufferLocation.offset)));
+        info := type_info(SDL_GPUBufferLocation);
+        for info.members {
+            if it.name == {
+                case "buffer";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUBufferLocation.buffer has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUBufferLocation.buffer has unexpected size % instead of 8", it.type.runtime_size);
+                case "offset";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUBufferLocation.offset has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBufferLocation.offset has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUBufferLocation) == 16, "SDL_GPUBufferLocation has size % instead of 16", size_of(SDL_GPUBufferLocation));
     }
 
     {
-        instance: SDL_GPUBufferRegion;
-        assert(((cast(*void)(*instance.buffer)) - cast(*void)(*instance)) == 0, "SDL_GPUBufferRegion.buffer has unexpected offset % instead of 0", ((cast(*void)(*instance.buffer)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBufferRegion.buffer)) == 8, "SDL_GPUBufferRegion.buffer has unexpected size % instead of 8", size_of(type_of(SDL_GPUBufferRegion.buffer)));
-        assert(((cast(*void)(*instance.offset)) - cast(*void)(*instance)) == 8, "SDL_GPUBufferRegion.offset has unexpected offset % instead of 8", ((cast(*void)(*instance.offset)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBufferRegion.offset)) == 4, "SDL_GPUBufferRegion.offset has unexpected size % instead of 4", size_of(type_of(SDL_GPUBufferRegion.offset)));
-        assert(((cast(*void)(*instance.size)) - cast(*void)(*instance)) == 12, "SDL_GPUBufferRegion.size has unexpected offset % instead of 12", ((cast(*void)(*instance.size)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBufferRegion.size)) == 4, "SDL_GPUBufferRegion.size has unexpected size % instead of 4", size_of(type_of(SDL_GPUBufferRegion.size)));
+        info := type_info(SDL_GPUBufferRegion);
+        for info.members {
+            if it.name == {
+                case "buffer";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUBufferRegion.buffer has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUBufferRegion.buffer has unexpected size % instead of 8", it.type.runtime_size);
+                case "offset";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUBufferRegion.offset has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBufferRegion.offset has unexpected size % instead of 4", it.type.runtime_size);
+                case "size";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUBufferRegion.size has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBufferRegion.size has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUBufferRegion) == 16, "SDL_GPUBufferRegion has size % instead of 16", size_of(SDL_GPUBufferRegion));
     }
 
     {
-        instance: SDL_GPUIndirectDrawCommand;
-        assert(((cast(*void)(*instance.num_vertices)) - cast(*void)(*instance)) == 0, "SDL_GPUIndirectDrawCommand.num_vertices has unexpected offset % instead of 0", ((cast(*void)(*instance.num_vertices)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUIndirectDrawCommand.num_vertices)) == 4, "SDL_GPUIndirectDrawCommand.num_vertices has unexpected size % instead of 4", size_of(type_of(SDL_GPUIndirectDrawCommand.num_vertices)));
-        assert(((cast(*void)(*instance.num_instances)) - cast(*void)(*instance)) == 4, "SDL_GPUIndirectDrawCommand.num_instances has unexpected offset % instead of 4", ((cast(*void)(*instance.num_instances)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUIndirectDrawCommand.num_instances)) == 4, "SDL_GPUIndirectDrawCommand.num_instances has unexpected size % instead of 4", size_of(type_of(SDL_GPUIndirectDrawCommand.num_instances)));
-        assert(((cast(*void)(*instance.first_vertex)) - cast(*void)(*instance)) == 8, "SDL_GPUIndirectDrawCommand.first_vertex has unexpected offset % instead of 8", ((cast(*void)(*instance.first_vertex)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUIndirectDrawCommand.first_vertex)) == 4, "SDL_GPUIndirectDrawCommand.first_vertex has unexpected size % instead of 4", size_of(type_of(SDL_GPUIndirectDrawCommand.first_vertex)));
-        assert(((cast(*void)(*instance.first_instance)) - cast(*void)(*instance)) == 12, "SDL_GPUIndirectDrawCommand.first_instance has unexpected offset % instead of 12", ((cast(*void)(*instance.first_instance)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUIndirectDrawCommand.first_instance)) == 4, "SDL_GPUIndirectDrawCommand.first_instance has unexpected size % instead of 4", size_of(type_of(SDL_GPUIndirectDrawCommand.first_instance)));
+        info := type_info(SDL_GPUIndirectDrawCommand);
+        for info.members {
+            if it.name == {
+                case "num_vertices";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUIndirectDrawCommand.num_vertices has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUIndirectDrawCommand.num_vertices has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_instances";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUIndirectDrawCommand.num_instances has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUIndirectDrawCommand.num_instances has unexpected size % instead of 4", it.type.runtime_size);
+                case "first_vertex";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUIndirectDrawCommand.first_vertex has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUIndirectDrawCommand.first_vertex has unexpected size % instead of 4", it.type.runtime_size);
+                case "first_instance";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUIndirectDrawCommand.first_instance has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUIndirectDrawCommand.first_instance has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUIndirectDrawCommand) == 16, "SDL_GPUIndirectDrawCommand has size % instead of 16", size_of(SDL_GPUIndirectDrawCommand));
     }
 
     {
-        instance: SDL_GPUIndexedIndirectDrawCommand;
-        assert(((cast(*void)(*instance.num_indices)) - cast(*void)(*instance)) == 0, "SDL_GPUIndexedIndirectDrawCommand.num_indices has unexpected offset % instead of 0", ((cast(*void)(*instance.num_indices)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUIndexedIndirectDrawCommand.num_indices)) == 4, "SDL_GPUIndexedIndirectDrawCommand.num_indices has unexpected size % instead of 4", size_of(type_of(SDL_GPUIndexedIndirectDrawCommand.num_indices)));
-        assert(((cast(*void)(*instance.num_instances)) - cast(*void)(*instance)) == 4, "SDL_GPUIndexedIndirectDrawCommand.num_instances has unexpected offset % instead of 4", ((cast(*void)(*instance.num_instances)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUIndexedIndirectDrawCommand.num_instances)) == 4, "SDL_GPUIndexedIndirectDrawCommand.num_instances has unexpected size % instead of 4", size_of(type_of(SDL_GPUIndexedIndirectDrawCommand.num_instances)));
-        assert(((cast(*void)(*instance.first_index)) - cast(*void)(*instance)) == 8, "SDL_GPUIndexedIndirectDrawCommand.first_index has unexpected offset % instead of 8", ((cast(*void)(*instance.first_index)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUIndexedIndirectDrawCommand.first_index)) == 4, "SDL_GPUIndexedIndirectDrawCommand.first_index has unexpected size % instead of 4", size_of(type_of(SDL_GPUIndexedIndirectDrawCommand.first_index)));
-        assert(((cast(*void)(*instance.vertex_offset)) - cast(*void)(*instance)) == 12, "SDL_GPUIndexedIndirectDrawCommand.vertex_offset has unexpected offset % instead of 12", ((cast(*void)(*instance.vertex_offset)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUIndexedIndirectDrawCommand.vertex_offset)) == 4, "SDL_GPUIndexedIndirectDrawCommand.vertex_offset has unexpected size % instead of 4", size_of(type_of(SDL_GPUIndexedIndirectDrawCommand.vertex_offset)));
-        assert(((cast(*void)(*instance.first_instance)) - cast(*void)(*instance)) == 16, "SDL_GPUIndexedIndirectDrawCommand.first_instance has unexpected offset % instead of 16", ((cast(*void)(*instance.first_instance)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUIndexedIndirectDrawCommand.first_instance)) == 4, "SDL_GPUIndexedIndirectDrawCommand.first_instance has unexpected size % instead of 4", size_of(type_of(SDL_GPUIndexedIndirectDrawCommand.first_instance)));
+        info := type_info(SDL_GPUIndexedIndirectDrawCommand);
+        for info.members {
+            if it.name == {
+                case "num_indices";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUIndexedIndirectDrawCommand.num_indices has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUIndexedIndirectDrawCommand.num_indices has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_instances";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUIndexedIndirectDrawCommand.num_instances has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUIndexedIndirectDrawCommand.num_instances has unexpected size % instead of 4", it.type.runtime_size);
+                case "first_index";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUIndexedIndirectDrawCommand.first_index has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUIndexedIndirectDrawCommand.first_index has unexpected size % instead of 4", it.type.runtime_size);
+                case "vertex_offset";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUIndexedIndirectDrawCommand.vertex_offset has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUIndexedIndirectDrawCommand.vertex_offset has unexpected size % instead of 4", it.type.runtime_size);
+                case "first_instance";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUIndexedIndirectDrawCommand.first_instance has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUIndexedIndirectDrawCommand.first_instance has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUIndexedIndirectDrawCommand) == 20, "SDL_GPUIndexedIndirectDrawCommand has size % instead of 20", size_of(SDL_GPUIndexedIndirectDrawCommand));
     }
 
     {
-        instance: SDL_GPUIndirectDispatchCommand;
-        assert(((cast(*void)(*instance.groupcount_x)) - cast(*void)(*instance)) == 0, "SDL_GPUIndirectDispatchCommand.groupcount_x has unexpected offset % instead of 0", ((cast(*void)(*instance.groupcount_x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUIndirectDispatchCommand.groupcount_x)) == 4, "SDL_GPUIndirectDispatchCommand.groupcount_x has unexpected size % instead of 4", size_of(type_of(SDL_GPUIndirectDispatchCommand.groupcount_x)));
-        assert(((cast(*void)(*instance.groupcount_y)) - cast(*void)(*instance)) == 4, "SDL_GPUIndirectDispatchCommand.groupcount_y has unexpected offset % instead of 4", ((cast(*void)(*instance.groupcount_y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUIndirectDispatchCommand.groupcount_y)) == 4, "SDL_GPUIndirectDispatchCommand.groupcount_y has unexpected size % instead of 4", size_of(type_of(SDL_GPUIndirectDispatchCommand.groupcount_y)));
-        assert(((cast(*void)(*instance.groupcount_z)) - cast(*void)(*instance)) == 8, "SDL_GPUIndirectDispatchCommand.groupcount_z has unexpected offset % instead of 8", ((cast(*void)(*instance.groupcount_z)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUIndirectDispatchCommand.groupcount_z)) == 4, "SDL_GPUIndirectDispatchCommand.groupcount_z has unexpected size % instead of 4", size_of(type_of(SDL_GPUIndirectDispatchCommand.groupcount_z)));
+        info := type_info(SDL_GPUIndirectDispatchCommand);
+        for info.members {
+            if it.name == {
+                case "groupcount_x";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUIndirectDispatchCommand.groupcount_x has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUIndirectDispatchCommand.groupcount_x has unexpected size % instead of 4", it.type.runtime_size);
+                case "groupcount_y";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUIndirectDispatchCommand.groupcount_y has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUIndirectDispatchCommand.groupcount_y has unexpected size % instead of 4", it.type.runtime_size);
+                case "groupcount_z";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUIndirectDispatchCommand.groupcount_z has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUIndirectDispatchCommand.groupcount_z has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUIndirectDispatchCommand) == 12, "SDL_GPUIndirectDispatchCommand has size % instead of 12", size_of(SDL_GPUIndirectDispatchCommand));
     }
 
     {
-        instance: SDL_GPUSamplerCreateInfo;
-        assert(((cast(*void)(*instance.min_filter)) - cast(*void)(*instance)) == 0, "SDL_GPUSamplerCreateInfo.min_filter has unexpected offset % instead of 0", ((cast(*void)(*instance.min_filter)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.min_filter)) == 4, "SDL_GPUSamplerCreateInfo.min_filter has unexpected size % instead of 4", size_of(type_of(SDL_GPUSamplerCreateInfo.min_filter)));
-        assert(((cast(*void)(*instance.mag_filter)) - cast(*void)(*instance)) == 4, "SDL_GPUSamplerCreateInfo.mag_filter has unexpected offset % instead of 4", ((cast(*void)(*instance.mag_filter)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.mag_filter)) == 4, "SDL_GPUSamplerCreateInfo.mag_filter has unexpected size % instead of 4", size_of(type_of(SDL_GPUSamplerCreateInfo.mag_filter)));
-        assert(((cast(*void)(*instance.mipmap_mode)) - cast(*void)(*instance)) == 8, "SDL_GPUSamplerCreateInfo.mipmap_mode has unexpected offset % instead of 8", ((cast(*void)(*instance.mipmap_mode)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.mipmap_mode)) == 4, "SDL_GPUSamplerCreateInfo.mipmap_mode has unexpected size % instead of 4", size_of(type_of(SDL_GPUSamplerCreateInfo.mipmap_mode)));
-        assert(((cast(*void)(*instance.address_mode_u)) - cast(*void)(*instance)) == 12, "SDL_GPUSamplerCreateInfo.address_mode_u has unexpected offset % instead of 12", ((cast(*void)(*instance.address_mode_u)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.address_mode_u)) == 4, "SDL_GPUSamplerCreateInfo.address_mode_u has unexpected size % instead of 4", size_of(type_of(SDL_GPUSamplerCreateInfo.address_mode_u)));
-        assert(((cast(*void)(*instance.address_mode_v)) - cast(*void)(*instance)) == 16, "SDL_GPUSamplerCreateInfo.address_mode_v has unexpected offset % instead of 16", ((cast(*void)(*instance.address_mode_v)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.address_mode_v)) == 4, "SDL_GPUSamplerCreateInfo.address_mode_v has unexpected size % instead of 4", size_of(type_of(SDL_GPUSamplerCreateInfo.address_mode_v)));
-        assert(((cast(*void)(*instance.address_mode_w)) - cast(*void)(*instance)) == 20, "SDL_GPUSamplerCreateInfo.address_mode_w has unexpected offset % instead of 20", ((cast(*void)(*instance.address_mode_w)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.address_mode_w)) == 4, "SDL_GPUSamplerCreateInfo.address_mode_w has unexpected size % instead of 4", size_of(type_of(SDL_GPUSamplerCreateInfo.address_mode_w)));
-        assert(((cast(*void)(*instance.mip_lod_bias)) - cast(*void)(*instance)) == 24, "SDL_GPUSamplerCreateInfo.mip_lod_bias has unexpected offset % instead of 24", ((cast(*void)(*instance.mip_lod_bias)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.mip_lod_bias)) == 4, "SDL_GPUSamplerCreateInfo.mip_lod_bias has unexpected size % instead of 4", size_of(type_of(SDL_GPUSamplerCreateInfo.mip_lod_bias)));
-        assert(((cast(*void)(*instance.max_anisotropy)) - cast(*void)(*instance)) == 28, "SDL_GPUSamplerCreateInfo.max_anisotropy has unexpected offset % instead of 28", ((cast(*void)(*instance.max_anisotropy)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.max_anisotropy)) == 4, "SDL_GPUSamplerCreateInfo.max_anisotropy has unexpected size % instead of 4", size_of(type_of(SDL_GPUSamplerCreateInfo.max_anisotropy)));
-        assert(((cast(*void)(*instance.compare_op)) - cast(*void)(*instance)) == 32, "SDL_GPUSamplerCreateInfo.compare_op has unexpected offset % instead of 32", ((cast(*void)(*instance.compare_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.compare_op)) == 4, "SDL_GPUSamplerCreateInfo.compare_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUSamplerCreateInfo.compare_op)));
-        assert(((cast(*void)(*instance.min_lod)) - cast(*void)(*instance)) == 36, "SDL_GPUSamplerCreateInfo.min_lod has unexpected offset % instead of 36", ((cast(*void)(*instance.min_lod)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.min_lod)) == 4, "SDL_GPUSamplerCreateInfo.min_lod has unexpected size % instead of 4", size_of(type_of(SDL_GPUSamplerCreateInfo.min_lod)));
-        assert(((cast(*void)(*instance.max_lod)) - cast(*void)(*instance)) == 40, "SDL_GPUSamplerCreateInfo.max_lod has unexpected offset % instead of 40", ((cast(*void)(*instance.max_lod)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.max_lod)) == 4, "SDL_GPUSamplerCreateInfo.max_lod has unexpected size % instead of 4", size_of(type_of(SDL_GPUSamplerCreateInfo.max_lod)));
-        assert(((cast(*void)(*instance.enable_anisotropy)) - cast(*void)(*instance)) == 44, "SDL_GPUSamplerCreateInfo.enable_anisotropy has unexpected offset % instead of 44", ((cast(*void)(*instance.enable_anisotropy)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.enable_anisotropy)) == 1, "SDL_GPUSamplerCreateInfo.enable_anisotropy has unexpected size % instead of 1", size_of(type_of(SDL_GPUSamplerCreateInfo.enable_anisotropy)));
-        assert(((cast(*void)(*instance.enable_compare)) - cast(*void)(*instance)) == 45, "SDL_GPUSamplerCreateInfo.enable_compare has unexpected offset % instead of 45", ((cast(*void)(*instance.enable_compare)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.enable_compare)) == 1, "SDL_GPUSamplerCreateInfo.enable_compare has unexpected size % instead of 1", size_of(type_of(SDL_GPUSamplerCreateInfo.enable_compare)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 46, "SDL_GPUSamplerCreateInfo.padding1 has unexpected offset % instead of 46", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.padding1)) == 1, "SDL_GPUSamplerCreateInfo.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GPUSamplerCreateInfo.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 47, "SDL_GPUSamplerCreateInfo.padding2 has unexpected offset % instead of 47", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.padding2)) == 1, "SDL_GPUSamplerCreateInfo.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GPUSamplerCreateInfo.padding2)));
-        assert(((cast(*void)(*instance.props)) - cast(*void)(*instance)) == 48, "SDL_GPUSamplerCreateInfo.props has unexpected offset % instead of 48", ((cast(*void)(*instance.props)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUSamplerCreateInfo.props)) == 4, "SDL_GPUSamplerCreateInfo.props has unexpected size % instead of 4", size_of(type_of(SDL_GPUSamplerCreateInfo.props)));
+        info := type_info(SDL_GPUSamplerCreateInfo);
+        for info.members {
+            if it.name == {
+                case "min_filter";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUSamplerCreateInfo.min_filter has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUSamplerCreateInfo.min_filter has unexpected size % instead of 4", it.type.runtime_size);
+                case "mag_filter";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUSamplerCreateInfo.mag_filter has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUSamplerCreateInfo.mag_filter has unexpected size % instead of 4", it.type.runtime_size);
+                case "mipmap_mode";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUSamplerCreateInfo.mipmap_mode has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUSamplerCreateInfo.mipmap_mode has unexpected size % instead of 4", it.type.runtime_size);
+                case "address_mode_u";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUSamplerCreateInfo.address_mode_u has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUSamplerCreateInfo.address_mode_u has unexpected size % instead of 4", it.type.runtime_size);
+                case "address_mode_v";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUSamplerCreateInfo.address_mode_v has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUSamplerCreateInfo.address_mode_v has unexpected size % instead of 4", it.type.runtime_size);
+                case "address_mode_w";
+                    assert(it.offset_in_bytes == 20, "SDL_GPUSamplerCreateInfo.address_mode_w has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUSamplerCreateInfo.address_mode_w has unexpected size % instead of 4", it.type.runtime_size);
+                case "mip_lod_bias";
+                    assert(it.offset_in_bytes == 24, "SDL_GPUSamplerCreateInfo.mip_lod_bias has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUSamplerCreateInfo.mip_lod_bias has unexpected size % instead of 4", it.type.runtime_size);
+                case "max_anisotropy";
+                    assert(it.offset_in_bytes == 28, "SDL_GPUSamplerCreateInfo.max_anisotropy has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUSamplerCreateInfo.max_anisotropy has unexpected size % instead of 4", it.type.runtime_size);
+                case "compare_op";
+                    assert(it.offset_in_bytes == 32, "SDL_GPUSamplerCreateInfo.compare_op has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUSamplerCreateInfo.compare_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "min_lod";
+                    assert(it.offset_in_bytes == 36, "SDL_GPUSamplerCreateInfo.min_lod has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUSamplerCreateInfo.min_lod has unexpected size % instead of 4", it.type.runtime_size);
+                case "max_lod";
+                    assert(it.offset_in_bytes == 40, "SDL_GPUSamplerCreateInfo.max_lod has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUSamplerCreateInfo.max_lod has unexpected size % instead of 4", it.type.runtime_size);
+                case "enable_anisotropy";
+                    assert(it.offset_in_bytes == 44, "SDL_GPUSamplerCreateInfo.enable_anisotropy has unexpected offset % instead of 44", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUSamplerCreateInfo.enable_anisotropy has unexpected size % instead of 1", it.type.runtime_size);
+                case "enable_compare";
+                    assert(it.offset_in_bytes == 45, "SDL_GPUSamplerCreateInfo.enable_compare has unexpected offset % instead of 45", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUSamplerCreateInfo.enable_compare has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 46, "SDL_GPUSamplerCreateInfo.padding1 has unexpected offset % instead of 46", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUSamplerCreateInfo.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 47, "SDL_GPUSamplerCreateInfo.padding2 has unexpected offset % instead of 47", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUSamplerCreateInfo.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+                case "props";
+                    assert(it.offset_in_bytes == 48, "SDL_GPUSamplerCreateInfo.props has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUSamplerCreateInfo.props has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUSamplerCreateInfo) == 52, "SDL_GPUSamplerCreateInfo has size % instead of 52", size_of(SDL_GPUSamplerCreateInfo));
     }
 
     {
-        instance: SDL_GPUVertexBufferDescription;
-        assert(((cast(*void)(*instance.slot)) - cast(*void)(*instance)) == 0, "SDL_GPUVertexBufferDescription.slot has unexpected offset % instead of 0", ((cast(*void)(*instance.slot)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUVertexBufferDescription.slot)) == 4, "SDL_GPUVertexBufferDescription.slot has unexpected size % instead of 4", size_of(type_of(SDL_GPUVertexBufferDescription.slot)));
-        assert(((cast(*void)(*instance.pitch)) - cast(*void)(*instance)) == 4, "SDL_GPUVertexBufferDescription.pitch has unexpected offset % instead of 4", ((cast(*void)(*instance.pitch)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUVertexBufferDescription.pitch)) == 4, "SDL_GPUVertexBufferDescription.pitch has unexpected size % instead of 4", size_of(type_of(SDL_GPUVertexBufferDescription.pitch)));
-        assert(((cast(*void)(*instance.input_rate)) - cast(*void)(*instance)) == 8, "SDL_GPUVertexBufferDescription.input_rate has unexpected offset % instead of 8", ((cast(*void)(*instance.input_rate)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUVertexBufferDescription.input_rate)) == 4, "SDL_GPUVertexBufferDescription.input_rate has unexpected size % instead of 4", size_of(type_of(SDL_GPUVertexBufferDescription.input_rate)));
-        assert(((cast(*void)(*instance.instance_step_rate)) - cast(*void)(*instance)) == 12, "SDL_GPUVertexBufferDescription.instance_step_rate has unexpected offset % instead of 12", ((cast(*void)(*instance.instance_step_rate)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUVertexBufferDescription.instance_step_rate)) == 4, "SDL_GPUVertexBufferDescription.instance_step_rate has unexpected size % instead of 4", size_of(type_of(SDL_GPUVertexBufferDescription.instance_step_rate)));
+        info := type_info(SDL_GPUVertexBufferDescription);
+        for info.members {
+            if it.name == {
+                case "slot";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUVertexBufferDescription.slot has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUVertexBufferDescription.slot has unexpected size % instead of 4", it.type.runtime_size);
+                case "pitch";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUVertexBufferDescription.pitch has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUVertexBufferDescription.pitch has unexpected size % instead of 4", it.type.runtime_size);
+                case "input_rate";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUVertexBufferDescription.input_rate has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUVertexBufferDescription.input_rate has unexpected size % instead of 4", it.type.runtime_size);
+                case "instance_step_rate";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUVertexBufferDescription.instance_step_rate has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUVertexBufferDescription.instance_step_rate has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUVertexBufferDescription) == 16, "SDL_GPUVertexBufferDescription has size % instead of 16", size_of(SDL_GPUVertexBufferDescription));
     }
 
     {
-        instance: SDL_GPUVertexAttribute;
-        assert(((cast(*void)(*instance.location)) - cast(*void)(*instance)) == 0, "SDL_GPUVertexAttribute.location has unexpected offset % instead of 0", ((cast(*void)(*instance.location)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUVertexAttribute.location)) == 4, "SDL_GPUVertexAttribute.location has unexpected size % instead of 4", size_of(type_of(SDL_GPUVertexAttribute.location)));
-        assert(((cast(*void)(*instance.buffer_slot)) - cast(*void)(*instance)) == 4, "SDL_GPUVertexAttribute.buffer_slot has unexpected offset % instead of 4", ((cast(*void)(*instance.buffer_slot)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUVertexAttribute.buffer_slot)) == 4, "SDL_GPUVertexAttribute.buffer_slot has unexpected size % instead of 4", size_of(type_of(SDL_GPUVertexAttribute.buffer_slot)));
-        assert(((cast(*void)(*instance.format)) - cast(*void)(*instance)) == 8, "SDL_GPUVertexAttribute.format has unexpected offset % instead of 8", ((cast(*void)(*instance.format)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUVertexAttribute.format)) == 4, "SDL_GPUVertexAttribute.format has unexpected size % instead of 4", size_of(type_of(SDL_GPUVertexAttribute.format)));
-        assert(((cast(*void)(*instance.offset)) - cast(*void)(*instance)) == 12, "SDL_GPUVertexAttribute.offset has unexpected offset % instead of 12", ((cast(*void)(*instance.offset)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUVertexAttribute.offset)) == 4, "SDL_GPUVertexAttribute.offset has unexpected size % instead of 4", size_of(type_of(SDL_GPUVertexAttribute.offset)));
+        info := type_info(SDL_GPUVertexAttribute);
+        for info.members {
+            if it.name == {
+                case "location";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUVertexAttribute.location has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUVertexAttribute.location has unexpected size % instead of 4", it.type.runtime_size);
+                case "buffer_slot";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUVertexAttribute.buffer_slot has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUVertexAttribute.buffer_slot has unexpected size % instead of 4", it.type.runtime_size);
+                case "format";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUVertexAttribute.format has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUVertexAttribute.format has unexpected size % instead of 4", it.type.runtime_size);
+                case "offset";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUVertexAttribute.offset has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUVertexAttribute.offset has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUVertexAttribute) == 16, "SDL_GPUVertexAttribute has size % instead of 16", size_of(SDL_GPUVertexAttribute));
     }
 
     {
-        instance: SDL_GPUVertexInputState;
-        assert(((cast(*void)(*instance.vertex_buffer_descriptions)) - cast(*void)(*instance)) == 0, "SDL_GPUVertexInputState.vertex_buffer_descriptions has unexpected offset % instead of 0", ((cast(*void)(*instance.vertex_buffer_descriptions)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUVertexInputState.vertex_buffer_descriptions)) == 8, "SDL_GPUVertexInputState.vertex_buffer_descriptions has unexpected size % instead of 8", size_of(type_of(SDL_GPUVertexInputState.vertex_buffer_descriptions)));
-        assert(((cast(*void)(*instance.num_vertex_buffers)) - cast(*void)(*instance)) == 8, "SDL_GPUVertexInputState.num_vertex_buffers has unexpected offset % instead of 8", ((cast(*void)(*instance.num_vertex_buffers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUVertexInputState.num_vertex_buffers)) == 4, "SDL_GPUVertexInputState.num_vertex_buffers has unexpected size % instead of 4", size_of(type_of(SDL_GPUVertexInputState.num_vertex_buffers)));
-        assert(((cast(*void)(*instance.vertex_attributes)) - cast(*void)(*instance)) == 16, "SDL_GPUVertexInputState.vertex_attributes has unexpected offset % instead of 16", ((cast(*void)(*instance.vertex_attributes)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUVertexInputState.vertex_attributes)) == 8, "SDL_GPUVertexInputState.vertex_attributes has unexpected size % instead of 8", size_of(type_of(SDL_GPUVertexInputState.vertex_attributes)));
-        assert(((cast(*void)(*instance.num_vertex_attributes)) - cast(*void)(*instance)) == 24, "SDL_GPUVertexInputState.num_vertex_attributes has unexpected offset % instead of 24", ((cast(*void)(*instance.num_vertex_attributes)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUVertexInputState.num_vertex_attributes)) == 4, "SDL_GPUVertexInputState.num_vertex_attributes has unexpected size % instead of 4", size_of(type_of(SDL_GPUVertexInputState.num_vertex_attributes)));
+        info := type_info(SDL_GPUVertexInputState);
+        for info.members {
+            if it.name == {
+                case "vertex_buffer_descriptions";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUVertexInputState.vertex_buffer_descriptions has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUVertexInputState.vertex_buffer_descriptions has unexpected size % instead of 8", it.type.runtime_size);
+                case "num_vertex_buffers";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUVertexInputState.num_vertex_buffers has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUVertexInputState.num_vertex_buffers has unexpected size % instead of 4", it.type.runtime_size);
+                case "vertex_attributes";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUVertexInputState.vertex_attributes has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUVertexInputState.vertex_attributes has unexpected size % instead of 8", it.type.runtime_size);
+                case "num_vertex_attributes";
+                    assert(it.offset_in_bytes == 24, "SDL_GPUVertexInputState.num_vertex_attributes has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUVertexInputState.num_vertex_attributes has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUVertexInputState) == 32, "SDL_GPUVertexInputState has size % instead of 32", size_of(SDL_GPUVertexInputState));
     }
 
     {
-        instance: SDL_GPUStencilOpState;
-        assert(((cast(*void)(*instance.fail_op)) - cast(*void)(*instance)) == 0, "SDL_GPUStencilOpState.fail_op has unexpected offset % instead of 0", ((cast(*void)(*instance.fail_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStencilOpState.fail_op)) == 4, "SDL_GPUStencilOpState.fail_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUStencilOpState.fail_op)));
-        assert(((cast(*void)(*instance.pass_op)) - cast(*void)(*instance)) == 4, "SDL_GPUStencilOpState.pass_op has unexpected offset % instead of 4", ((cast(*void)(*instance.pass_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStencilOpState.pass_op)) == 4, "SDL_GPUStencilOpState.pass_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUStencilOpState.pass_op)));
-        assert(((cast(*void)(*instance.depth_fail_op)) - cast(*void)(*instance)) == 8, "SDL_GPUStencilOpState.depth_fail_op has unexpected offset % instead of 8", ((cast(*void)(*instance.depth_fail_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStencilOpState.depth_fail_op)) == 4, "SDL_GPUStencilOpState.depth_fail_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUStencilOpState.depth_fail_op)));
-        assert(((cast(*void)(*instance.compare_op)) - cast(*void)(*instance)) == 12, "SDL_GPUStencilOpState.compare_op has unexpected offset % instead of 12", ((cast(*void)(*instance.compare_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStencilOpState.compare_op)) == 4, "SDL_GPUStencilOpState.compare_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUStencilOpState.compare_op)));
+        info := type_info(SDL_GPUStencilOpState);
+        for info.members {
+            if it.name == {
+                case "fail_op";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUStencilOpState.fail_op has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUStencilOpState.fail_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "pass_op";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUStencilOpState.pass_op has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUStencilOpState.pass_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "depth_fail_op";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUStencilOpState.depth_fail_op has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUStencilOpState.depth_fail_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "compare_op";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUStencilOpState.compare_op has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUStencilOpState.compare_op has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUStencilOpState) == 16, "SDL_GPUStencilOpState has size % instead of 16", size_of(SDL_GPUStencilOpState));
     }
 
     {
-        instance: SDL_GPUColorTargetBlendState;
-        assert(((cast(*void)(*instance.src_color_blendfactor)) - cast(*void)(*instance)) == 0, "SDL_GPUColorTargetBlendState.src_color_blendfactor has unexpected offset % instead of 0", ((cast(*void)(*instance.src_color_blendfactor)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetBlendState.src_color_blendfactor)) == 4, "SDL_GPUColorTargetBlendState.src_color_blendfactor has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetBlendState.src_color_blendfactor)));
-        assert(((cast(*void)(*instance.dst_color_blendfactor)) - cast(*void)(*instance)) == 4, "SDL_GPUColorTargetBlendState.dst_color_blendfactor has unexpected offset % instead of 4", ((cast(*void)(*instance.dst_color_blendfactor)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetBlendState.dst_color_blendfactor)) == 4, "SDL_GPUColorTargetBlendState.dst_color_blendfactor has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetBlendState.dst_color_blendfactor)));
-        assert(((cast(*void)(*instance.color_blend_op)) - cast(*void)(*instance)) == 8, "SDL_GPUColorTargetBlendState.color_blend_op has unexpected offset % instead of 8", ((cast(*void)(*instance.color_blend_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetBlendState.color_blend_op)) == 4, "SDL_GPUColorTargetBlendState.color_blend_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetBlendState.color_blend_op)));
-        assert(((cast(*void)(*instance.src_alpha_blendfactor)) - cast(*void)(*instance)) == 12, "SDL_GPUColorTargetBlendState.src_alpha_blendfactor has unexpected offset % instead of 12", ((cast(*void)(*instance.src_alpha_blendfactor)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetBlendState.src_alpha_blendfactor)) == 4, "SDL_GPUColorTargetBlendState.src_alpha_blendfactor has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetBlendState.src_alpha_blendfactor)));
-        assert(((cast(*void)(*instance.dst_alpha_blendfactor)) - cast(*void)(*instance)) == 16, "SDL_GPUColorTargetBlendState.dst_alpha_blendfactor has unexpected offset % instead of 16", ((cast(*void)(*instance.dst_alpha_blendfactor)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetBlendState.dst_alpha_blendfactor)) == 4, "SDL_GPUColorTargetBlendState.dst_alpha_blendfactor has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetBlendState.dst_alpha_blendfactor)));
-        assert(((cast(*void)(*instance.alpha_blend_op)) - cast(*void)(*instance)) == 20, "SDL_GPUColorTargetBlendState.alpha_blend_op has unexpected offset % instead of 20", ((cast(*void)(*instance.alpha_blend_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetBlendState.alpha_blend_op)) == 4, "SDL_GPUColorTargetBlendState.alpha_blend_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetBlendState.alpha_blend_op)));
-        assert(((cast(*void)(*instance.color_write_mask)) - cast(*void)(*instance)) == 24, "SDL_GPUColorTargetBlendState.color_write_mask has unexpected offset % instead of 24", ((cast(*void)(*instance.color_write_mask)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetBlendState.color_write_mask)) == 1, "SDL_GPUColorTargetBlendState.color_write_mask has unexpected size % instead of 1", size_of(type_of(SDL_GPUColorTargetBlendState.color_write_mask)));
-        assert(((cast(*void)(*instance.enable_blend)) - cast(*void)(*instance)) == 25, "SDL_GPUColorTargetBlendState.enable_blend has unexpected offset % instead of 25", ((cast(*void)(*instance.enable_blend)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetBlendState.enable_blend)) == 1, "SDL_GPUColorTargetBlendState.enable_blend has unexpected size % instead of 1", size_of(type_of(SDL_GPUColorTargetBlendState.enable_blend)));
-        assert(((cast(*void)(*instance.enable_color_write_mask)) - cast(*void)(*instance)) == 26, "SDL_GPUColorTargetBlendState.enable_color_write_mask has unexpected offset % instead of 26", ((cast(*void)(*instance.enable_color_write_mask)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetBlendState.enable_color_write_mask)) == 1, "SDL_GPUColorTargetBlendState.enable_color_write_mask has unexpected size % instead of 1", size_of(type_of(SDL_GPUColorTargetBlendState.enable_color_write_mask)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 27, "SDL_GPUColorTargetBlendState.padding1 has unexpected offset % instead of 27", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetBlendState.padding1)) == 1, "SDL_GPUColorTargetBlendState.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GPUColorTargetBlendState.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 28, "SDL_GPUColorTargetBlendState.padding2 has unexpected offset % instead of 28", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetBlendState.padding2)) == 1, "SDL_GPUColorTargetBlendState.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GPUColorTargetBlendState.padding2)));
+        info := type_info(SDL_GPUColorTargetBlendState);
+        for info.members {
+            if it.name == {
+                case "src_color_blendfactor";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUColorTargetBlendState.src_color_blendfactor has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetBlendState.src_color_blendfactor has unexpected size % instead of 4", it.type.runtime_size);
+                case "dst_color_blendfactor";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUColorTargetBlendState.dst_color_blendfactor has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetBlendState.dst_color_blendfactor has unexpected size % instead of 4", it.type.runtime_size);
+                case "color_blend_op";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUColorTargetBlendState.color_blend_op has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetBlendState.color_blend_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "src_alpha_blendfactor";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUColorTargetBlendState.src_alpha_blendfactor has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetBlendState.src_alpha_blendfactor has unexpected size % instead of 4", it.type.runtime_size);
+                case "dst_alpha_blendfactor";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUColorTargetBlendState.dst_alpha_blendfactor has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetBlendState.dst_alpha_blendfactor has unexpected size % instead of 4", it.type.runtime_size);
+                case "alpha_blend_op";
+                    assert(it.offset_in_bytes == 20, "SDL_GPUColorTargetBlendState.alpha_blend_op has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetBlendState.alpha_blend_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "color_write_mask";
+                    assert(it.offset_in_bytes == 24, "SDL_GPUColorTargetBlendState.color_write_mask has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUColorTargetBlendState.color_write_mask has unexpected size % instead of 1", it.type.runtime_size);
+                case "enable_blend";
+                    assert(it.offset_in_bytes == 25, "SDL_GPUColorTargetBlendState.enable_blend has unexpected offset % instead of 25", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUColorTargetBlendState.enable_blend has unexpected size % instead of 1", it.type.runtime_size);
+                case "enable_color_write_mask";
+                    assert(it.offset_in_bytes == 26, "SDL_GPUColorTargetBlendState.enable_color_write_mask has unexpected offset % instead of 26", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUColorTargetBlendState.enable_color_write_mask has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 27, "SDL_GPUColorTargetBlendState.padding1 has unexpected offset % instead of 27", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUColorTargetBlendState.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 28, "SDL_GPUColorTargetBlendState.padding2 has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUColorTargetBlendState.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUColorTargetBlendState) == 32, "SDL_GPUColorTargetBlendState has size % instead of 32", size_of(SDL_GPUColorTargetBlendState));
     }
 
     {
-        instance: SDL_GPUShaderCreateInfo;
-        assert(((cast(*void)(*instance.code_size)) - cast(*void)(*instance)) == 0, "SDL_GPUShaderCreateInfo.code_size has unexpected offset % instead of 0", ((cast(*void)(*instance.code_size)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUShaderCreateInfo.code_size)) == 8, "SDL_GPUShaderCreateInfo.code_size has unexpected size % instead of 8", size_of(type_of(SDL_GPUShaderCreateInfo.code_size)));
-        assert(((cast(*void)(*instance.code)) - cast(*void)(*instance)) == 8, "SDL_GPUShaderCreateInfo.code has unexpected offset % instead of 8", ((cast(*void)(*instance.code)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUShaderCreateInfo.code)) == 8, "SDL_GPUShaderCreateInfo.code has unexpected size % instead of 8", size_of(type_of(SDL_GPUShaderCreateInfo.code)));
-        assert(((cast(*void)(*instance.entrypoint)) - cast(*void)(*instance)) == 16, "SDL_GPUShaderCreateInfo.entrypoint has unexpected offset % instead of 16", ((cast(*void)(*instance.entrypoint)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUShaderCreateInfo.entrypoint)) == 8, "SDL_GPUShaderCreateInfo.entrypoint has unexpected size % instead of 8", size_of(type_of(SDL_GPUShaderCreateInfo.entrypoint)));
-        assert(((cast(*void)(*instance.format)) - cast(*void)(*instance)) == 24, "SDL_GPUShaderCreateInfo.format has unexpected offset % instead of 24", ((cast(*void)(*instance.format)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUShaderCreateInfo.format)) == 4, "SDL_GPUShaderCreateInfo.format has unexpected size % instead of 4", size_of(type_of(SDL_GPUShaderCreateInfo.format)));
-        assert(((cast(*void)(*instance.stage)) - cast(*void)(*instance)) == 28, "SDL_GPUShaderCreateInfo.stage has unexpected offset % instead of 28", ((cast(*void)(*instance.stage)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUShaderCreateInfo.stage)) == 4, "SDL_GPUShaderCreateInfo.stage has unexpected size % instead of 4", size_of(type_of(SDL_GPUShaderCreateInfo.stage)));
-        assert(((cast(*void)(*instance.num_samplers)) - cast(*void)(*instance)) == 32, "SDL_GPUShaderCreateInfo.num_samplers has unexpected offset % instead of 32", ((cast(*void)(*instance.num_samplers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUShaderCreateInfo.num_samplers)) == 4, "SDL_GPUShaderCreateInfo.num_samplers has unexpected size % instead of 4", size_of(type_of(SDL_GPUShaderCreateInfo.num_samplers)));
-        assert(((cast(*void)(*instance.num_storage_textures)) - cast(*void)(*instance)) == 36, "SDL_GPUShaderCreateInfo.num_storage_textures has unexpected offset % instead of 36", ((cast(*void)(*instance.num_storage_textures)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUShaderCreateInfo.num_storage_textures)) == 4, "SDL_GPUShaderCreateInfo.num_storage_textures has unexpected size % instead of 4", size_of(type_of(SDL_GPUShaderCreateInfo.num_storage_textures)));
-        assert(((cast(*void)(*instance.num_storage_buffers)) - cast(*void)(*instance)) == 40, "SDL_GPUShaderCreateInfo.num_storage_buffers has unexpected offset % instead of 40", ((cast(*void)(*instance.num_storage_buffers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUShaderCreateInfo.num_storage_buffers)) == 4, "SDL_GPUShaderCreateInfo.num_storage_buffers has unexpected size % instead of 4", size_of(type_of(SDL_GPUShaderCreateInfo.num_storage_buffers)));
-        assert(((cast(*void)(*instance.num_uniform_buffers)) - cast(*void)(*instance)) == 44, "SDL_GPUShaderCreateInfo.num_uniform_buffers has unexpected offset % instead of 44", ((cast(*void)(*instance.num_uniform_buffers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUShaderCreateInfo.num_uniform_buffers)) == 4, "SDL_GPUShaderCreateInfo.num_uniform_buffers has unexpected size % instead of 4", size_of(type_of(SDL_GPUShaderCreateInfo.num_uniform_buffers)));
-        assert(((cast(*void)(*instance.props)) - cast(*void)(*instance)) == 48, "SDL_GPUShaderCreateInfo.props has unexpected offset % instead of 48", ((cast(*void)(*instance.props)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUShaderCreateInfo.props)) == 4, "SDL_GPUShaderCreateInfo.props has unexpected size % instead of 4", size_of(type_of(SDL_GPUShaderCreateInfo.props)));
+        info := type_info(SDL_GPUShaderCreateInfo);
+        for info.members {
+            if it.name == {
+                case "code_size";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUShaderCreateInfo.code_size has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUShaderCreateInfo.code_size has unexpected size % instead of 8", it.type.runtime_size);
+                case "code";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUShaderCreateInfo.code has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUShaderCreateInfo.code has unexpected size % instead of 8", it.type.runtime_size);
+                case "entrypoint";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUShaderCreateInfo.entrypoint has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUShaderCreateInfo.entrypoint has unexpected size % instead of 8", it.type.runtime_size);
+                case "format";
+                    assert(it.offset_in_bytes == 24, "SDL_GPUShaderCreateInfo.format has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUShaderCreateInfo.format has unexpected size % instead of 4", it.type.runtime_size);
+                case "stage";
+                    assert(it.offset_in_bytes == 28, "SDL_GPUShaderCreateInfo.stage has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUShaderCreateInfo.stage has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_samplers";
+                    assert(it.offset_in_bytes == 32, "SDL_GPUShaderCreateInfo.num_samplers has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUShaderCreateInfo.num_samplers has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_storage_textures";
+                    assert(it.offset_in_bytes == 36, "SDL_GPUShaderCreateInfo.num_storage_textures has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUShaderCreateInfo.num_storage_textures has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_storage_buffers";
+                    assert(it.offset_in_bytes == 40, "SDL_GPUShaderCreateInfo.num_storage_buffers has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUShaderCreateInfo.num_storage_buffers has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_uniform_buffers";
+                    assert(it.offset_in_bytes == 44, "SDL_GPUShaderCreateInfo.num_uniform_buffers has unexpected offset % instead of 44", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUShaderCreateInfo.num_uniform_buffers has unexpected size % instead of 4", it.type.runtime_size);
+                case "props";
+                    assert(it.offset_in_bytes == 48, "SDL_GPUShaderCreateInfo.props has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUShaderCreateInfo.props has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUShaderCreateInfo) == 56, "SDL_GPUShaderCreateInfo has size % instead of 56", size_of(SDL_GPUShaderCreateInfo));
     }
 
     {
-        instance: SDL_GPUTextureCreateInfo;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_GPUTextureCreateInfo.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureCreateInfo.type)) == 4, "SDL_GPUTextureCreateInfo.type has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureCreateInfo.type)));
-        assert(((cast(*void)(*instance.format)) - cast(*void)(*instance)) == 4, "SDL_GPUTextureCreateInfo.format has unexpected offset % instead of 4", ((cast(*void)(*instance.format)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureCreateInfo.format)) == 4, "SDL_GPUTextureCreateInfo.format has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureCreateInfo.format)));
-        assert(((cast(*void)(*instance.usage)) - cast(*void)(*instance)) == 8, "SDL_GPUTextureCreateInfo.usage has unexpected offset % instead of 8", ((cast(*void)(*instance.usage)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureCreateInfo.usage)) == 4, "SDL_GPUTextureCreateInfo.usage has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureCreateInfo.usage)));
-        assert(((cast(*void)(*instance.width)) - cast(*void)(*instance)) == 12, "SDL_GPUTextureCreateInfo.width has unexpected offset % instead of 12", ((cast(*void)(*instance.width)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureCreateInfo.width)) == 4, "SDL_GPUTextureCreateInfo.width has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureCreateInfo.width)));
-        assert(((cast(*void)(*instance.height)) - cast(*void)(*instance)) == 16, "SDL_GPUTextureCreateInfo.height has unexpected offset % instead of 16", ((cast(*void)(*instance.height)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureCreateInfo.height)) == 4, "SDL_GPUTextureCreateInfo.height has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureCreateInfo.height)));
-        assert(((cast(*void)(*instance.layer_count_or_depth)) - cast(*void)(*instance)) == 20, "SDL_GPUTextureCreateInfo.layer_count_or_depth has unexpected offset % instead of 20", ((cast(*void)(*instance.layer_count_or_depth)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureCreateInfo.layer_count_or_depth)) == 4, "SDL_GPUTextureCreateInfo.layer_count_or_depth has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureCreateInfo.layer_count_or_depth)));
-        assert(((cast(*void)(*instance.num_levels)) - cast(*void)(*instance)) == 24, "SDL_GPUTextureCreateInfo.num_levels has unexpected offset % instead of 24", ((cast(*void)(*instance.num_levels)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureCreateInfo.num_levels)) == 4, "SDL_GPUTextureCreateInfo.num_levels has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureCreateInfo.num_levels)));
-        assert(((cast(*void)(*instance.sample_count)) - cast(*void)(*instance)) == 28, "SDL_GPUTextureCreateInfo.sample_count has unexpected offset % instead of 28", ((cast(*void)(*instance.sample_count)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureCreateInfo.sample_count)) == 4, "SDL_GPUTextureCreateInfo.sample_count has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureCreateInfo.sample_count)));
-        assert(((cast(*void)(*instance.props)) - cast(*void)(*instance)) == 32, "SDL_GPUTextureCreateInfo.props has unexpected offset % instead of 32", ((cast(*void)(*instance.props)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureCreateInfo.props)) == 4, "SDL_GPUTextureCreateInfo.props has unexpected size % instead of 4", size_of(type_of(SDL_GPUTextureCreateInfo.props)));
+        info := type_info(SDL_GPUTextureCreateInfo);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUTextureCreateInfo.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureCreateInfo.type has unexpected size % instead of 4", it.type.runtime_size);
+                case "format";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUTextureCreateInfo.format has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureCreateInfo.format has unexpected size % instead of 4", it.type.runtime_size);
+                case "usage";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUTextureCreateInfo.usage has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureCreateInfo.usage has unexpected size % instead of 4", it.type.runtime_size);
+                case "width";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUTextureCreateInfo.width has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureCreateInfo.width has unexpected size % instead of 4", it.type.runtime_size);
+                case "height";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUTextureCreateInfo.height has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureCreateInfo.height has unexpected size % instead of 4", it.type.runtime_size);
+                case "layer_count_or_depth";
+                    assert(it.offset_in_bytes == 20, "SDL_GPUTextureCreateInfo.layer_count_or_depth has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureCreateInfo.layer_count_or_depth has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_levels";
+                    assert(it.offset_in_bytes == 24, "SDL_GPUTextureCreateInfo.num_levels has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureCreateInfo.num_levels has unexpected size % instead of 4", it.type.runtime_size);
+                case "sample_count";
+                    assert(it.offset_in_bytes == 28, "SDL_GPUTextureCreateInfo.sample_count has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureCreateInfo.sample_count has unexpected size % instead of 4", it.type.runtime_size);
+                case "props";
+                    assert(it.offset_in_bytes == 32, "SDL_GPUTextureCreateInfo.props has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTextureCreateInfo.props has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUTextureCreateInfo) == 36, "SDL_GPUTextureCreateInfo has size % instead of 36", size_of(SDL_GPUTextureCreateInfo));
     }
 
     {
-        instance: SDL_GPUBufferCreateInfo;
-        assert(((cast(*void)(*instance.usage)) - cast(*void)(*instance)) == 0, "SDL_GPUBufferCreateInfo.usage has unexpected offset % instead of 0", ((cast(*void)(*instance.usage)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBufferCreateInfo.usage)) == 4, "SDL_GPUBufferCreateInfo.usage has unexpected size % instead of 4", size_of(type_of(SDL_GPUBufferCreateInfo.usage)));
-        assert(((cast(*void)(*instance.size)) - cast(*void)(*instance)) == 4, "SDL_GPUBufferCreateInfo.size has unexpected offset % instead of 4", ((cast(*void)(*instance.size)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBufferCreateInfo.size)) == 4, "SDL_GPUBufferCreateInfo.size has unexpected size % instead of 4", size_of(type_of(SDL_GPUBufferCreateInfo.size)));
-        assert(((cast(*void)(*instance.props)) - cast(*void)(*instance)) == 8, "SDL_GPUBufferCreateInfo.props has unexpected offset % instead of 8", ((cast(*void)(*instance.props)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBufferCreateInfo.props)) == 4, "SDL_GPUBufferCreateInfo.props has unexpected size % instead of 4", size_of(type_of(SDL_GPUBufferCreateInfo.props)));
+        info := type_info(SDL_GPUBufferCreateInfo);
+        for info.members {
+            if it.name == {
+                case "usage";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUBufferCreateInfo.usage has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBufferCreateInfo.usage has unexpected size % instead of 4", it.type.runtime_size);
+                case "size";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUBufferCreateInfo.size has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBufferCreateInfo.size has unexpected size % instead of 4", it.type.runtime_size);
+                case "props";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUBufferCreateInfo.props has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBufferCreateInfo.props has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUBufferCreateInfo) == 12, "SDL_GPUBufferCreateInfo has size % instead of 12", size_of(SDL_GPUBufferCreateInfo));
     }
 
     {
-        instance: SDL_GPUTransferBufferCreateInfo;
-        assert(((cast(*void)(*instance.usage)) - cast(*void)(*instance)) == 0, "SDL_GPUTransferBufferCreateInfo.usage has unexpected offset % instead of 0", ((cast(*void)(*instance.usage)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTransferBufferCreateInfo.usage)) == 4, "SDL_GPUTransferBufferCreateInfo.usage has unexpected size % instead of 4", size_of(type_of(SDL_GPUTransferBufferCreateInfo.usage)));
-        assert(((cast(*void)(*instance.size)) - cast(*void)(*instance)) == 4, "SDL_GPUTransferBufferCreateInfo.size has unexpected offset % instead of 4", ((cast(*void)(*instance.size)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTransferBufferCreateInfo.size)) == 4, "SDL_GPUTransferBufferCreateInfo.size has unexpected size % instead of 4", size_of(type_of(SDL_GPUTransferBufferCreateInfo.size)));
-        assert(((cast(*void)(*instance.props)) - cast(*void)(*instance)) == 8, "SDL_GPUTransferBufferCreateInfo.props has unexpected offset % instead of 8", ((cast(*void)(*instance.props)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTransferBufferCreateInfo.props)) == 4, "SDL_GPUTransferBufferCreateInfo.props has unexpected size % instead of 4", size_of(type_of(SDL_GPUTransferBufferCreateInfo.props)));
+        info := type_info(SDL_GPUTransferBufferCreateInfo);
+        for info.members {
+            if it.name == {
+                case "usage";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUTransferBufferCreateInfo.usage has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTransferBufferCreateInfo.usage has unexpected size % instead of 4", it.type.runtime_size);
+                case "size";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUTransferBufferCreateInfo.size has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTransferBufferCreateInfo.size has unexpected size % instead of 4", it.type.runtime_size);
+                case "props";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUTransferBufferCreateInfo.props has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUTransferBufferCreateInfo.props has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUTransferBufferCreateInfo) == 12, "SDL_GPUTransferBufferCreateInfo has size % instead of 12", size_of(SDL_GPUTransferBufferCreateInfo));
     }
 
     {
-        instance: SDL_GPURasterizerState;
-        assert(((cast(*void)(*instance.fill_mode)) - cast(*void)(*instance)) == 0, "SDL_GPURasterizerState.fill_mode has unexpected offset % instead of 0", ((cast(*void)(*instance.fill_mode)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPURasterizerState.fill_mode)) == 4, "SDL_GPURasterizerState.fill_mode has unexpected size % instead of 4", size_of(type_of(SDL_GPURasterizerState.fill_mode)));
-        assert(((cast(*void)(*instance.cull_mode)) - cast(*void)(*instance)) == 4, "SDL_GPURasterizerState.cull_mode has unexpected offset % instead of 4", ((cast(*void)(*instance.cull_mode)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPURasterizerState.cull_mode)) == 4, "SDL_GPURasterizerState.cull_mode has unexpected size % instead of 4", size_of(type_of(SDL_GPURasterizerState.cull_mode)));
-        assert(((cast(*void)(*instance.front_face)) - cast(*void)(*instance)) == 8, "SDL_GPURasterizerState.front_face has unexpected offset % instead of 8", ((cast(*void)(*instance.front_face)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPURasterizerState.front_face)) == 4, "SDL_GPURasterizerState.front_face has unexpected size % instead of 4", size_of(type_of(SDL_GPURasterizerState.front_face)));
-        assert(((cast(*void)(*instance.depth_bias_constant_factor)) - cast(*void)(*instance)) == 12, "SDL_GPURasterizerState.depth_bias_constant_factor has unexpected offset % instead of 12", ((cast(*void)(*instance.depth_bias_constant_factor)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPURasterizerState.depth_bias_constant_factor)) == 4, "SDL_GPURasterizerState.depth_bias_constant_factor has unexpected size % instead of 4", size_of(type_of(SDL_GPURasterizerState.depth_bias_constant_factor)));
-        assert(((cast(*void)(*instance.depth_bias_clamp)) - cast(*void)(*instance)) == 16, "SDL_GPURasterizerState.depth_bias_clamp has unexpected offset % instead of 16", ((cast(*void)(*instance.depth_bias_clamp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPURasterizerState.depth_bias_clamp)) == 4, "SDL_GPURasterizerState.depth_bias_clamp has unexpected size % instead of 4", size_of(type_of(SDL_GPURasterizerState.depth_bias_clamp)));
-        assert(((cast(*void)(*instance.depth_bias_slope_factor)) - cast(*void)(*instance)) == 20, "SDL_GPURasterizerState.depth_bias_slope_factor has unexpected offset % instead of 20", ((cast(*void)(*instance.depth_bias_slope_factor)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPURasterizerState.depth_bias_slope_factor)) == 4, "SDL_GPURasterizerState.depth_bias_slope_factor has unexpected size % instead of 4", size_of(type_of(SDL_GPURasterizerState.depth_bias_slope_factor)));
-        assert(((cast(*void)(*instance.enable_depth_bias)) - cast(*void)(*instance)) == 24, "SDL_GPURasterizerState.enable_depth_bias has unexpected offset % instead of 24", ((cast(*void)(*instance.enable_depth_bias)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPURasterizerState.enable_depth_bias)) == 1, "SDL_GPURasterizerState.enable_depth_bias has unexpected size % instead of 1", size_of(type_of(SDL_GPURasterizerState.enable_depth_bias)));
-        assert(((cast(*void)(*instance.enable_depth_clip)) - cast(*void)(*instance)) == 25, "SDL_GPURasterizerState.enable_depth_clip has unexpected offset % instead of 25", ((cast(*void)(*instance.enable_depth_clip)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPURasterizerState.enable_depth_clip)) == 1, "SDL_GPURasterizerState.enable_depth_clip has unexpected size % instead of 1", size_of(type_of(SDL_GPURasterizerState.enable_depth_clip)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 26, "SDL_GPURasterizerState.padding1 has unexpected offset % instead of 26", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPURasterizerState.padding1)) == 1, "SDL_GPURasterizerState.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GPURasterizerState.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 27, "SDL_GPURasterizerState.padding2 has unexpected offset % instead of 27", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPURasterizerState.padding2)) == 1, "SDL_GPURasterizerState.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GPURasterizerState.padding2)));
+        info := type_info(SDL_GPURasterizerState);
+        for info.members {
+            if it.name == {
+                case "fill_mode";
+                    assert(it.offset_in_bytes == 0, "SDL_GPURasterizerState.fill_mode has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPURasterizerState.fill_mode has unexpected size % instead of 4", it.type.runtime_size);
+                case "cull_mode";
+                    assert(it.offset_in_bytes == 4, "SDL_GPURasterizerState.cull_mode has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPURasterizerState.cull_mode has unexpected size % instead of 4", it.type.runtime_size);
+                case "front_face";
+                    assert(it.offset_in_bytes == 8, "SDL_GPURasterizerState.front_face has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPURasterizerState.front_face has unexpected size % instead of 4", it.type.runtime_size);
+                case "depth_bias_constant_factor";
+                    assert(it.offset_in_bytes == 12, "SDL_GPURasterizerState.depth_bias_constant_factor has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPURasterizerState.depth_bias_constant_factor has unexpected size % instead of 4", it.type.runtime_size);
+                case "depth_bias_clamp";
+                    assert(it.offset_in_bytes == 16, "SDL_GPURasterizerState.depth_bias_clamp has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPURasterizerState.depth_bias_clamp has unexpected size % instead of 4", it.type.runtime_size);
+                case "depth_bias_slope_factor";
+                    assert(it.offset_in_bytes == 20, "SDL_GPURasterizerState.depth_bias_slope_factor has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPURasterizerState.depth_bias_slope_factor has unexpected size % instead of 4", it.type.runtime_size);
+                case "enable_depth_bias";
+                    assert(it.offset_in_bytes == 24, "SDL_GPURasterizerState.enable_depth_bias has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPURasterizerState.enable_depth_bias has unexpected size % instead of 1", it.type.runtime_size);
+                case "enable_depth_clip";
+                    assert(it.offset_in_bytes == 25, "SDL_GPURasterizerState.enable_depth_clip has unexpected offset % instead of 25", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPURasterizerState.enable_depth_clip has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 26, "SDL_GPURasterizerState.padding1 has unexpected offset % instead of 26", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPURasterizerState.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 27, "SDL_GPURasterizerState.padding2 has unexpected offset % instead of 27", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPURasterizerState.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPURasterizerState) == 28, "SDL_GPURasterizerState has size % instead of 28", size_of(SDL_GPURasterizerState));
     }
 
     {
-        instance: SDL_GPUMultisampleState;
-        assert(((cast(*void)(*instance.sample_count)) - cast(*void)(*instance)) == 0, "SDL_GPUMultisampleState.sample_count has unexpected offset % instead of 0", ((cast(*void)(*instance.sample_count)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUMultisampleState.sample_count)) == 4, "SDL_GPUMultisampleState.sample_count has unexpected size % instead of 4", size_of(type_of(SDL_GPUMultisampleState.sample_count)));
-        assert(((cast(*void)(*instance.sample_mask)) - cast(*void)(*instance)) == 4, "SDL_GPUMultisampleState.sample_mask has unexpected offset % instead of 4", ((cast(*void)(*instance.sample_mask)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUMultisampleState.sample_mask)) == 4, "SDL_GPUMultisampleState.sample_mask has unexpected size % instead of 4", size_of(type_of(SDL_GPUMultisampleState.sample_mask)));
-        assert(((cast(*void)(*instance.enable_mask)) - cast(*void)(*instance)) == 8, "SDL_GPUMultisampleState.enable_mask has unexpected offset % instead of 8", ((cast(*void)(*instance.enable_mask)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUMultisampleState.enable_mask)) == 1, "SDL_GPUMultisampleState.enable_mask has unexpected size % instead of 1", size_of(type_of(SDL_GPUMultisampleState.enable_mask)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 9, "SDL_GPUMultisampleState.padding1 has unexpected offset % instead of 9", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUMultisampleState.padding1)) == 1, "SDL_GPUMultisampleState.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GPUMultisampleState.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 10, "SDL_GPUMultisampleState.padding2 has unexpected offset % instead of 10", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUMultisampleState.padding2)) == 1, "SDL_GPUMultisampleState.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GPUMultisampleState.padding2)));
-        assert(((cast(*void)(*instance.padding3)) - cast(*void)(*instance)) == 11, "SDL_GPUMultisampleState.padding3 has unexpected offset % instead of 11", ((cast(*void)(*instance.padding3)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUMultisampleState.padding3)) == 1, "SDL_GPUMultisampleState.padding3 has unexpected size % instead of 1", size_of(type_of(SDL_GPUMultisampleState.padding3)));
+        info := type_info(SDL_GPUMultisampleState);
+        for info.members {
+            if it.name == {
+                case "sample_count";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUMultisampleState.sample_count has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUMultisampleState.sample_count has unexpected size % instead of 4", it.type.runtime_size);
+                case "sample_mask";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUMultisampleState.sample_mask has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUMultisampleState.sample_mask has unexpected size % instead of 4", it.type.runtime_size);
+                case "enable_mask";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUMultisampleState.enable_mask has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUMultisampleState.enable_mask has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 9, "SDL_GPUMultisampleState.padding1 has unexpected offset % instead of 9", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUMultisampleState.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 10, "SDL_GPUMultisampleState.padding2 has unexpected offset % instead of 10", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUMultisampleState.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding3";
+                    assert(it.offset_in_bytes == 11, "SDL_GPUMultisampleState.padding3 has unexpected offset % instead of 11", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUMultisampleState.padding3 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUMultisampleState) == 12, "SDL_GPUMultisampleState has size % instead of 12", size_of(SDL_GPUMultisampleState));
     }
 
     {
-        instance: SDL_GPUDepthStencilState;
-        assert(((cast(*void)(*instance.compare_op)) - cast(*void)(*instance)) == 0, "SDL_GPUDepthStencilState.compare_op has unexpected offset % instead of 0", ((cast(*void)(*instance.compare_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilState.compare_op)) == 4, "SDL_GPUDepthStencilState.compare_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUDepthStencilState.compare_op)));
-        assert(((cast(*void)(*instance.back_stencil_state)) - cast(*void)(*instance)) == 4, "SDL_GPUDepthStencilState.back_stencil_state has unexpected offset % instead of 4", ((cast(*void)(*instance.back_stencil_state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilState.back_stencil_state)) == 16, "SDL_GPUDepthStencilState.back_stencil_state has unexpected size % instead of 16", size_of(type_of(SDL_GPUDepthStencilState.back_stencil_state)));
-        assert(((cast(*void)(*instance.front_stencil_state)) - cast(*void)(*instance)) == 20, "SDL_GPUDepthStencilState.front_stencil_state has unexpected offset % instead of 20", ((cast(*void)(*instance.front_stencil_state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilState.front_stencil_state)) == 16, "SDL_GPUDepthStencilState.front_stencil_state has unexpected size % instead of 16", size_of(type_of(SDL_GPUDepthStencilState.front_stencil_state)));
-        assert(((cast(*void)(*instance.compare_mask)) - cast(*void)(*instance)) == 36, "SDL_GPUDepthStencilState.compare_mask has unexpected offset % instead of 36", ((cast(*void)(*instance.compare_mask)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilState.compare_mask)) == 1, "SDL_GPUDepthStencilState.compare_mask has unexpected size % instead of 1", size_of(type_of(SDL_GPUDepthStencilState.compare_mask)));
-        assert(((cast(*void)(*instance.write_mask)) - cast(*void)(*instance)) == 37, "SDL_GPUDepthStencilState.write_mask has unexpected offset % instead of 37", ((cast(*void)(*instance.write_mask)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilState.write_mask)) == 1, "SDL_GPUDepthStencilState.write_mask has unexpected size % instead of 1", size_of(type_of(SDL_GPUDepthStencilState.write_mask)));
-        assert(((cast(*void)(*instance.enable_depth_test)) - cast(*void)(*instance)) == 38, "SDL_GPUDepthStencilState.enable_depth_test has unexpected offset % instead of 38", ((cast(*void)(*instance.enable_depth_test)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilState.enable_depth_test)) == 1, "SDL_GPUDepthStencilState.enable_depth_test has unexpected size % instead of 1", size_of(type_of(SDL_GPUDepthStencilState.enable_depth_test)));
-        assert(((cast(*void)(*instance.enable_depth_write)) - cast(*void)(*instance)) == 39, "SDL_GPUDepthStencilState.enable_depth_write has unexpected offset % instead of 39", ((cast(*void)(*instance.enable_depth_write)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilState.enable_depth_write)) == 1, "SDL_GPUDepthStencilState.enable_depth_write has unexpected size % instead of 1", size_of(type_of(SDL_GPUDepthStencilState.enable_depth_write)));
-        assert(((cast(*void)(*instance.enable_stencil_test)) - cast(*void)(*instance)) == 40, "SDL_GPUDepthStencilState.enable_stencil_test has unexpected offset % instead of 40", ((cast(*void)(*instance.enable_stencil_test)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilState.enable_stencil_test)) == 1, "SDL_GPUDepthStencilState.enable_stencil_test has unexpected size % instead of 1", size_of(type_of(SDL_GPUDepthStencilState.enable_stencil_test)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 41, "SDL_GPUDepthStencilState.padding1 has unexpected offset % instead of 41", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilState.padding1)) == 1, "SDL_GPUDepthStencilState.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GPUDepthStencilState.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 42, "SDL_GPUDepthStencilState.padding2 has unexpected offset % instead of 42", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilState.padding2)) == 1, "SDL_GPUDepthStencilState.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GPUDepthStencilState.padding2)));
-        assert(((cast(*void)(*instance.padding3)) - cast(*void)(*instance)) == 43, "SDL_GPUDepthStencilState.padding3 has unexpected offset % instead of 43", ((cast(*void)(*instance.padding3)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilState.padding3)) == 1, "SDL_GPUDepthStencilState.padding3 has unexpected size % instead of 1", size_of(type_of(SDL_GPUDepthStencilState.padding3)));
+        info := type_info(SDL_GPUDepthStencilState);
+        for info.members {
+            if it.name == {
+                case "compare_op";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUDepthStencilState.compare_op has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUDepthStencilState.compare_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "back_stencil_state";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUDepthStencilState.back_stencil_state has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_GPUDepthStencilState.back_stencil_state has unexpected size % instead of 16", it.type.runtime_size);
+                case "front_stencil_state";
+                    assert(it.offset_in_bytes == 20, "SDL_GPUDepthStencilState.front_stencil_state has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_GPUDepthStencilState.front_stencil_state has unexpected size % instead of 16", it.type.runtime_size);
+                case "compare_mask";
+                    assert(it.offset_in_bytes == 36, "SDL_GPUDepthStencilState.compare_mask has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUDepthStencilState.compare_mask has unexpected size % instead of 1", it.type.runtime_size);
+                case "write_mask";
+                    assert(it.offset_in_bytes == 37, "SDL_GPUDepthStencilState.write_mask has unexpected offset % instead of 37", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUDepthStencilState.write_mask has unexpected size % instead of 1", it.type.runtime_size);
+                case "enable_depth_test";
+                    assert(it.offset_in_bytes == 38, "SDL_GPUDepthStencilState.enable_depth_test has unexpected offset % instead of 38", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUDepthStencilState.enable_depth_test has unexpected size % instead of 1", it.type.runtime_size);
+                case "enable_depth_write";
+                    assert(it.offset_in_bytes == 39, "SDL_GPUDepthStencilState.enable_depth_write has unexpected offset % instead of 39", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUDepthStencilState.enable_depth_write has unexpected size % instead of 1", it.type.runtime_size);
+                case "enable_stencil_test";
+                    assert(it.offset_in_bytes == 40, "SDL_GPUDepthStencilState.enable_stencil_test has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUDepthStencilState.enable_stencil_test has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 41, "SDL_GPUDepthStencilState.padding1 has unexpected offset % instead of 41", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUDepthStencilState.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 42, "SDL_GPUDepthStencilState.padding2 has unexpected offset % instead of 42", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUDepthStencilState.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding3";
+                    assert(it.offset_in_bytes == 43, "SDL_GPUDepthStencilState.padding3 has unexpected offset % instead of 43", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUDepthStencilState.padding3 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUDepthStencilState) == 44, "SDL_GPUDepthStencilState has size % instead of 44", size_of(SDL_GPUDepthStencilState));
     }
 
     {
-        instance: SDL_GPUColorTargetDescription;
-        assert(((cast(*void)(*instance.format)) - cast(*void)(*instance)) == 0, "SDL_GPUColorTargetDescription.format has unexpected offset % instead of 0", ((cast(*void)(*instance.format)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetDescription.format)) == 4, "SDL_GPUColorTargetDescription.format has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetDescription.format)));
-        assert(((cast(*void)(*instance.blend_state)) - cast(*void)(*instance)) == 4, "SDL_GPUColorTargetDescription.blend_state has unexpected offset % instead of 4", ((cast(*void)(*instance.blend_state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetDescription.blend_state)) == 32, "SDL_GPUColorTargetDescription.blend_state has unexpected size % instead of 32", size_of(type_of(SDL_GPUColorTargetDescription.blend_state)));
+        info := type_info(SDL_GPUColorTargetDescription);
+        for info.members {
+            if it.name == {
+                case "format";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUColorTargetDescription.format has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetDescription.format has unexpected size % instead of 4", it.type.runtime_size);
+                case "blend_state";
+                    assert(it.offset_in_bytes == 4, "SDL_GPUColorTargetDescription.blend_state has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 32, "SDL_GPUColorTargetDescription.blend_state has unexpected size % instead of 32", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUColorTargetDescription) == 36, "SDL_GPUColorTargetDescription has size % instead of 36", size_of(SDL_GPUColorTargetDescription));
     }
 
     {
-        instance: SDL_GPUGraphicsPipelineTargetInfo;
-        assert(((cast(*void)(*instance.color_target_descriptions)) - cast(*void)(*instance)) == 0, "SDL_GPUGraphicsPipelineTargetInfo.color_target_descriptions has unexpected offset % instead of 0", ((cast(*void)(*instance.color_target_descriptions)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.color_target_descriptions)) == 8, "SDL_GPUGraphicsPipelineTargetInfo.color_target_descriptions has unexpected size % instead of 8", size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.color_target_descriptions)));
-        assert(((cast(*void)(*instance.num_color_targets)) - cast(*void)(*instance)) == 8, "SDL_GPUGraphicsPipelineTargetInfo.num_color_targets has unexpected offset % instead of 8", ((cast(*void)(*instance.num_color_targets)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.num_color_targets)) == 4, "SDL_GPUGraphicsPipelineTargetInfo.num_color_targets has unexpected size % instead of 4", size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.num_color_targets)));
-        assert(((cast(*void)(*instance.depth_stencil_format)) - cast(*void)(*instance)) == 12, "SDL_GPUGraphicsPipelineTargetInfo.depth_stencil_format has unexpected offset % instead of 12", ((cast(*void)(*instance.depth_stencil_format)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.depth_stencil_format)) == 4, "SDL_GPUGraphicsPipelineTargetInfo.depth_stencil_format has unexpected size % instead of 4", size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.depth_stencil_format)));
-        assert(((cast(*void)(*instance.has_depth_stencil_target)) - cast(*void)(*instance)) == 16, "SDL_GPUGraphicsPipelineTargetInfo.has_depth_stencil_target has unexpected offset % instead of 16", ((cast(*void)(*instance.has_depth_stencil_target)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.has_depth_stencil_target)) == 1, "SDL_GPUGraphicsPipelineTargetInfo.has_depth_stencil_target has unexpected size % instead of 1", size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.has_depth_stencil_target)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 17, "SDL_GPUGraphicsPipelineTargetInfo.padding1 has unexpected offset % instead of 17", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.padding1)) == 1, "SDL_GPUGraphicsPipelineTargetInfo.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 18, "SDL_GPUGraphicsPipelineTargetInfo.padding2 has unexpected offset % instead of 18", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.padding2)) == 1, "SDL_GPUGraphicsPipelineTargetInfo.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.padding2)));
-        assert(((cast(*void)(*instance.padding3)) - cast(*void)(*instance)) == 19, "SDL_GPUGraphicsPipelineTargetInfo.padding3 has unexpected offset % instead of 19", ((cast(*void)(*instance.padding3)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.padding3)) == 1, "SDL_GPUGraphicsPipelineTargetInfo.padding3 has unexpected size % instead of 1", size_of(type_of(SDL_GPUGraphicsPipelineTargetInfo.padding3)));
+        info := type_info(SDL_GPUGraphicsPipelineTargetInfo);
+        for info.members {
+            if it.name == {
+                case "color_target_descriptions";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUGraphicsPipelineTargetInfo.color_target_descriptions has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUGraphicsPipelineTargetInfo.color_target_descriptions has unexpected size % instead of 8", it.type.runtime_size);
+                case "num_color_targets";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUGraphicsPipelineTargetInfo.num_color_targets has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUGraphicsPipelineTargetInfo.num_color_targets has unexpected size % instead of 4", it.type.runtime_size);
+                case "depth_stencil_format";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUGraphicsPipelineTargetInfo.depth_stencil_format has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUGraphicsPipelineTargetInfo.depth_stencil_format has unexpected size % instead of 4", it.type.runtime_size);
+                case "has_depth_stencil_target";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUGraphicsPipelineTargetInfo.has_depth_stencil_target has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUGraphicsPipelineTargetInfo.has_depth_stencil_target has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 17, "SDL_GPUGraphicsPipelineTargetInfo.padding1 has unexpected offset % instead of 17", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUGraphicsPipelineTargetInfo.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 18, "SDL_GPUGraphicsPipelineTargetInfo.padding2 has unexpected offset % instead of 18", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUGraphicsPipelineTargetInfo.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding3";
+                    assert(it.offset_in_bytes == 19, "SDL_GPUGraphicsPipelineTargetInfo.padding3 has unexpected offset % instead of 19", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUGraphicsPipelineTargetInfo.padding3 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUGraphicsPipelineTargetInfo) == 24, "SDL_GPUGraphicsPipelineTargetInfo has size % instead of 24", size_of(SDL_GPUGraphicsPipelineTargetInfo));
     }
 
     {
-        instance: SDL_GPUGraphicsPipelineCreateInfo;
-        assert(((cast(*void)(*instance.vertex_shader)) - cast(*void)(*instance)) == 0, "SDL_GPUGraphicsPipelineCreateInfo.vertex_shader has unexpected offset % instead of 0", ((cast(*void)(*instance.vertex_shader)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.vertex_shader)) == 8, "SDL_GPUGraphicsPipelineCreateInfo.vertex_shader has unexpected size % instead of 8", size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.vertex_shader)));
-        assert(((cast(*void)(*instance.fragment_shader)) - cast(*void)(*instance)) == 8, "SDL_GPUGraphicsPipelineCreateInfo.fragment_shader has unexpected offset % instead of 8", ((cast(*void)(*instance.fragment_shader)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.fragment_shader)) == 8, "SDL_GPUGraphicsPipelineCreateInfo.fragment_shader has unexpected size % instead of 8", size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.fragment_shader)));
-        assert(((cast(*void)(*instance.vertex_input_state)) - cast(*void)(*instance)) == 16, "SDL_GPUGraphicsPipelineCreateInfo.vertex_input_state has unexpected offset % instead of 16", ((cast(*void)(*instance.vertex_input_state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.vertex_input_state)) == 32, "SDL_GPUGraphicsPipelineCreateInfo.vertex_input_state has unexpected size % instead of 32", size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.vertex_input_state)));
-        assert(((cast(*void)(*instance.primitive_type)) - cast(*void)(*instance)) == 48, "SDL_GPUGraphicsPipelineCreateInfo.primitive_type has unexpected offset % instead of 48", ((cast(*void)(*instance.primitive_type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.primitive_type)) == 4, "SDL_GPUGraphicsPipelineCreateInfo.primitive_type has unexpected size % instead of 4", size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.primitive_type)));
-        assert(((cast(*void)(*instance.rasterizer_state)) - cast(*void)(*instance)) == 52, "SDL_GPUGraphicsPipelineCreateInfo.rasterizer_state has unexpected offset % instead of 52", ((cast(*void)(*instance.rasterizer_state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.rasterizer_state)) == 28, "SDL_GPUGraphicsPipelineCreateInfo.rasterizer_state has unexpected size % instead of 28", size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.rasterizer_state)));
-        assert(((cast(*void)(*instance.multisample_state)) - cast(*void)(*instance)) == 80, "SDL_GPUGraphicsPipelineCreateInfo.multisample_state has unexpected offset % instead of 80", ((cast(*void)(*instance.multisample_state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.multisample_state)) == 12, "SDL_GPUGraphicsPipelineCreateInfo.multisample_state has unexpected size % instead of 12", size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.multisample_state)));
-        assert(((cast(*void)(*instance.depth_stencil_state)) - cast(*void)(*instance)) == 92, "SDL_GPUGraphicsPipelineCreateInfo.depth_stencil_state has unexpected offset % instead of 92", ((cast(*void)(*instance.depth_stencil_state)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.depth_stencil_state)) == 44, "SDL_GPUGraphicsPipelineCreateInfo.depth_stencil_state has unexpected size % instead of 44", size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.depth_stencil_state)));
-        assert(((cast(*void)(*instance.target_info)) - cast(*void)(*instance)) == 136, "SDL_GPUGraphicsPipelineCreateInfo.target_info has unexpected offset % instead of 136", ((cast(*void)(*instance.target_info)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.target_info)) == 24, "SDL_GPUGraphicsPipelineCreateInfo.target_info has unexpected size % instead of 24", size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.target_info)));
-        assert(((cast(*void)(*instance.props)) - cast(*void)(*instance)) == 160, "SDL_GPUGraphicsPipelineCreateInfo.props has unexpected offset % instead of 160", ((cast(*void)(*instance.props)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.props)) == 4, "SDL_GPUGraphicsPipelineCreateInfo.props has unexpected size % instead of 4", size_of(type_of(SDL_GPUGraphicsPipelineCreateInfo.props)));
+        info := type_info(SDL_GPUGraphicsPipelineCreateInfo);
+        for info.members {
+            if it.name == {
+                case "vertex_shader";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUGraphicsPipelineCreateInfo.vertex_shader has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUGraphicsPipelineCreateInfo.vertex_shader has unexpected size % instead of 8", it.type.runtime_size);
+                case "fragment_shader";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUGraphicsPipelineCreateInfo.fragment_shader has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUGraphicsPipelineCreateInfo.fragment_shader has unexpected size % instead of 8", it.type.runtime_size);
+                case "vertex_input_state";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUGraphicsPipelineCreateInfo.vertex_input_state has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 32, "SDL_GPUGraphicsPipelineCreateInfo.vertex_input_state has unexpected size % instead of 32", it.type.runtime_size);
+                case "primitive_type";
+                    assert(it.offset_in_bytes == 48, "SDL_GPUGraphicsPipelineCreateInfo.primitive_type has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUGraphicsPipelineCreateInfo.primitive_type has unexpected size % instead of 4", it.type.runtime_size);
+                case "rasterizer_state";
+                    assert(it.offset_in_bytes == 52, "SDL_GPUGraphicsPipelineCreateInfo.rasterizer_state has unexpected offset % instead of 52", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 28, "SDL_GPUGraphicsPipelineCreateInfo.rasterizer_state has unexpected size % instead of 28", it.type.runtime_size);
+                case "multisample_state";
+                    assert(it.offset_in_bytes == 80, "SDL_GPUGraphicsPipelineCreateInfo.multisample_state has unexpected offset % instead of 80", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 12, "SDL_GPUGraphicsPipelineCreateInfo.multisample_state has unexpected size % instead of 12", it.type.runtime_size);
+                case "depth_stencil_state";
+                    assert(it.offset_in_bytes == 92, "SDL_GPUGraphicsPipelineCreateInfo.depth_stencil_state has unexpected offset % instead of 92", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 44, "SDL_GPUGraphicsPipelineCreateInfo.depth_stencil_state has unexpected size % instead of 44", it.type.runtime_size);
+                case "target_info";
+                    assert(it.offset_in_bytes == 136, "SDL_GPUGraphicsPipelineCreateInfo.target_info has unexpected offset % instead of 136", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 24, "SDL_GPUGraphicsPipelineCreateInfo.target_info has unexpected size % instead of 24", it.type.runtime_size);
+                case "props";
+                    assert(it.offset_in_bytes == 160, "SDL_GPUGraphicsPipelineCreateInfo.props has unexpected offset % instead of 160", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUGraphicsPipelineCreateInfo.props has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUGraphicsPipelineCreateInfo) == 168, "SDL_GPUGraphicsPipelineCreateInfo has size % instead of 168", size_of(SDL_GPUGraphicsPipelineCreateInfo));
     }
 
     {
-        instance: SDL_GPUComputePipelineCreateInfo;
-        assert(((cast(*void)(*instance.code_size)) - cast(*void)(*instance)) == 0, "SDL_GPUComputePipelineCreateInfo.code_size has unexpected offset % instead of 0", ((cast(*void)(*instance.code_size)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.code_size)) == 8, "SDL_GPUComputePipelineCreateInfo.code_size has unexpected size % instead of 8", size_of(type_of(SDL_GPUComputePipelineCreateInfo.code_size)));
-        assert(((cast(*void)(*instance.code)) - cast(*void)(*instance)) == 8, "SDL_GPUComputePipelineCreateInfo.code has unexpected offset % instead of 8", ((cast(*void)(*instance.code)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.code)) == 8, "SDL_GPUComputePipelineCreateInfo.code has unexpected size % instead of 8", size_of(type_of(SDL_GPUComputePipelineCreateInfo.code)));
-        assert(((cast(*void)(*instance.entrypoint)) - cast(*void)(*instance)) == 16, "SDL_GPUComputePipelineCreateInfo.entrypoint has unexpected offset % instead of 16", ((cast(*void)(*instance.entrypoint)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.entrypoint)) == 8, "SDL_GPUComputePipelineCreateInfo.entrypoint has unexpected size % instead of 8", size_of(type_of(SDL_GPUComputePipelineCreateInfo.entrypoint)));
-        assert(((cast(*void)(*instance.format)) - cast(*void)(*instance)) == 24, "SDL_GPUComputePipelineCreateInfo.format has unexpected offset % instead of 24", ((cast(*void)(*instance.format)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.format)) == 4, "SDL_GPUComputePipelineCreateInfo.format has unexpected size % instead of 4", size_of(type_of(SDL_GPUComputePipelineCreateInfo.format)));
-        assert(((cast(*void)(*instance.num_samplers)) - cast(*void)(*instance)) == 28, "SDL_GPUComputePipelineCreateInfo.num_samplers has unexpected offset % instead of 28", ((cast(*void)(*instance.num_samplers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.num_samplers)) == 4, "SDL_GPUComputePipelineCreateInfo.num_samplers has unexpected size % instead of 4", size_of(type_of(SDL_GPUComputePipelineCreateInfo.num_samplers)));
-        assert(((cast(*void)(*instance.num_readonly_storage_textures)) - cast(*void)(*instance)) == 32, "SDL_GPUComputePipelineCreateInfo.num_readonly_storage_textures has unexpected offset % instead of 32", ((cast(*void)(*instance.num_readonly_storage_textures)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.num_readonly_storage_textures)) == 4, "SDL_GPUComputePipelineCreateInfo.num_readonly_storage_textures has unexpected size % instead of 4", size_of(type_of(SDL_GPUComputePipelineCreateInfo.num_readonly_storage_textures)));
-        assert(((cast(*void)(*instance.num_readonly_storage_buffers)) - cast(*void)(*instance)) == 36, "SDL_GPUComputePipelineCreateInfo.num_readonly_storage_buffers has unexpected offset % instead of 36", ((cast(*void)(*instance.num_readonly_storage_buffers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.num_readonly_storage_buffers)) == 4, "SDL_GPUComputePipelineCreateInfo.num_readonly_storage_buffers has unexpected size % instead of 4", size_of(type_of(SDL_GPUComputePipelineCreateInfo.num_readonly_storage_buffers)));
-        assert(((cast(*void)(*instance.num_readwrite_storage_textures)) - cast(*void)(*instance)) == 40, "SDL_GPUComputePipelineCreateInfo.num_readwrite_storage_textures has unexpected offset % instead of 40", ((cast(*void)(*instance.num_readwrite_storage_textures)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.num_readwrite_storage_textures)) == 4, "SDL_GPUComputePipelineCreateInfo.num_readwrite_storage_textures has unexpected size % instead of 4", size_of(type_of(SDL_GPUComputePipelineCreateInfo.num_readwrite_storage_textures)));
-        assert(((cast(*void)(*instance.num_readwrite_storage_buffers)) - cast(*void)(*instance)) == 44, "SDL_GPUComputePipelineCreateInfo.num_readwrite_storage_buffers has unexpected offset % instead of 44", ((cast(*void)(*instance.num_readwrite_storage_buffers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.num_readwrite_storage_buffers)) == 4, "SDL_GPUComputePipelineCreateInfo.num_readwrite_storage_buffers has unexpected size % instead of 4", size_of(type_of(SDL_GPUComputePipelineCreateInfo.num_readwrite_storage_buffers)));
-        assert(((cast(*void)(*instance.num_uniform_buffers)) - cast(*void)(*instance)) == 48, "SDL_GPUComputePipelineCreateInfo.num_uniform_buffers has unexpected offset % instead of 48", ((cast(*void)(*instance.num_uniform_buffers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.num_uniform_buffers)) == 4, "SDL_GPUComputePipelineCreateInfo.num_uniform_buffers has unexpected size % instead of 4", size_of(type_of(SDL_GPUComputePipelineCreateInfo.num_uniform_buffers)));
-        assert(((cast(*void)(*instance.threadcount_x)) - cast(*void)(*instance)) == 52, "SDL_GPUComputePipelineCreateInfo.threadcount_x has unexpected offset % instead of 52", ((cast(*void)(*instance.threadcount_x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.threadcount_x)) == 4, "SDL_GPUComputePipelineCreateInfo.threadcount_x has unexpected size % instead of 4", size_of(type_of(SDL_GPUComputePipelineCreateInfo.threadcount_x)));
-        assert(((cast(*void)(*instance.threadcount_y)) - cast(*void)(*instance)) == 56, "SDL_GPUComputePipelineCreateInfo.threadcount_y has unexpected offset % instead of 56", ((cast(*void)(*instance.threadcount_y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.threadcount_y)) == 4, "SDL_GPUComputePipelineCreateInfo.threadcount_y has unexpected size % instead of 4", size_of(type_of(SDL_GPUComputePipelineCreateInfo.threadcount_y)));
-        assert(((cast(*void)(*instance.threadcount_z)) - cast(*void)(*instance)) == 60, "SDL_GPUComputePipelineCreateInfo.threadcount_z has unexpected offset % instead of 60", ((cast(*void)(*instance.threadcount_z)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.threadcount_z)) == 4, "SDL_GPUComputePipelineCreateInfo.threadcount_z has unexpected size % instead of 4", size_of(type_of(SDL_GPUComputePipelineCreateInfo.threadcount_z)));
-        assert(((cast(*void)(*instance.props)) - cast(*void)(*instance)) == 64, "SDL_GPUComputePipelineCreateInfo.props has unexpected offset % instead of 64", ((cast(*void)(*instance.props)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUComputePipelineCreateInfo.props)) == 4, "SDL_GPUComputePipelineCreateInfo.props has unexpected size % instead of 4", size_of(type_of(SDL_GPUComputePipelineCreateInfo.props)));
+        info := type_info(SDL_GPUComputePipelineCreateInfo);
+        for info.members {
+            if it.name == {
+                case "code_size";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUComputePipelineCreateInfo.code_size has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUComputePipelineCreateInfo.code_size has unexpected size % instead of 8", it.type.runtime_size);
+                case "code";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUComputePipelineCreateInfo.code has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUComputePipelineCreateInfo.code has unexpected size % instead of 8", it.type.runtime_size);
+                case "entrypoint";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUComputePipelineCreateInfo.entrypoint has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUComputePipelineCreateInfo.entrypoint has unexpected size % instead of 8", it.type.runtime_size);
+                case "format";
+                    assert(it.offset_in_bytes == 24, "SDL_GPUComputePipelineCreateInfo.format has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUComputePipelineCreateInfo.format has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_samplers";
+                    assert(it.offset_in_bytes == 28, "SDL_GPUComputePipelineCreateInfo.num_samplers has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUComputePipelineCreateInfo.num_samplers has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_readonly_storage_textures";
+                    assert(it.offset_in_bytes == 32, "SDL_GPUComputePipelineCreateInfo.num_readonly_storage_textures has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUComputePipelineCreateInfo.num_readonly_storage_textures has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_readonly_storage_buffers";
+                    assert(it.offset_in_bytes == 36, "SDL_GPUComputePipelineCreateInfo.num_readonly_storage_buffers has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUComputePipelineCreateInfo.num_readonly_storage_buffers has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_readwrite_storage_textures";
+                    assert(it.offset_in_bytes == 40, "SDL_GPUComputePipelineCreateInfo.num_readwrite_storage_textures has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUComputePipelineCreateInfo.num_readwrite_storage_textures has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_readwrite_storage_buffers";
+                    assert(it.offset_in_bytes == 44, "SDL_GPUComputePipelineCreateInfo.num_readwrite_storage_buffers has unexpected offset % instead of 44", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUComputePipelineCreateInfo.num_readwrite_storage_buffers has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_uniform_buffers";
+                    assert(it.offset_in_bytes == 48, "SDL_GPUComputePipelineCreateInfo.num_uniform_buffers has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUComputePipelineCreateInfo.num_uniform_buffers has unexpected size % instead of 4", it.type.runtime_size);
+                case "threadcount_x";
+                    assert(it.offset_in_bytes == 52, "SDL_GPUComputePipelineCreateInfo.threadcount_x has unexpected offset % instead of 52", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUComputePipelineCreateInfo.threadcount_x has unexpected size % instead of 4", it.type.runtime_size);
+                case "threadcount_y";
+                    assert(it.offset_in_bytes == 56, "SDL_GPUComputePipelineCreateInfo.threadcount_y has unexpected offset % instead of 56", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUComputePipelineCreateInfo.threadcount_y has unexpected size % instead of 4", it.type.runtime_size);
+                case "threadcount_z";
+                    assert(it.offset_in_bytes == 60, "SDL_GPUComputePipelineCreateInfo.threadcount_z has unexpected offset % instead of 60", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUComputePipelineCreateInfo.threadcount_z has unexpected size % instead of 4", it.type.runtime_size);
+                case "props";
+                    assert(it.offset_in_bytes == 64, "SDL_GPUComputePipelineCreateInfo.props has unexpected offset % instead of 64", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUComputePipelineCreateInfo.props has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUComputePipelineCreateInfo) == 72, "SDL_GPUComputePipelineCreateInfo has size % instead of 72", size_of(SDL_GPUComputePipelineCreateInfo));
     }
 
     {
-        instance: SDL_GPUColorTargetInfo;
-        assert(((cast(*void)(*instance.texture)) - cast(*void)(*instance)) == 0, "SDL_GPUColorTargetInfo.texture has unexpected offset % instead of 0", ((cast(*void)(*instance.texture)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.texture)) == 8, "SDL_GPUColorTargetInfo.texture has unexpected size % instead of 8", size_of(type_of(SDL_GPUColorTargetInfo.texture)));
-        assert(((cast(*void)(*instance.mip_level)) - cast(*void)(*instance)) == 8, "SDL_GPUColorTargetInfo.mip_level has unexpected offset % instead of 8", ((cast(*void)(*instance.mip_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.mip_level)) == 4, "SDL_GPUColorTargetInfo.mip_level has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetInfo.mip_level)));
-        assert(((cast(*void)(*instance.layer_or_depth_plane)) - cast(*void)(*instance)) == 12, "SDL_GPUColorTargetInfo.layer_or_depth_plane has unexpected offset % instead of 12", ((cast(*void)(*instance.layer_or_depth_plane)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.layer_or_depth_plane)) == 4, "SDL_GPUColorTargetInfo.layer_or_depth_plane has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetInfo.layer_or_depth_plane)));
-        assert(((cast(*void)(*instance.clear_color)) - cast(*void)(*instance)) == 16, "SDL_GPUColorTargetInfo.clear_color has unexpected offset % instead of 16", ((cast(*void)(*instance.clear_color)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.clear_color)) == 16, "SDL_GPUColorTargetInfo.clear_color has unexpected size % instead of 16", size_of(type_of(SDL_GPUColorTargetInfo.clear_color)));
-        assert(((cast(*void)(*instance.load_op)) - cast(*void)(*instance)) == 32, "SDL_GPUColorTargetInfo.load_op has unexpected offset % instead of 32", ((cast(*void)(*instance.load_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.load_op)) == 4, "SDL_GPUColorTargetInfo.load_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetInfo.load_op)));
-        assert(((cast(*void)(*instance.store_op)) - cast(*void)(*instance)) == 36, "SDL_GPUColorTargetInfo.store_op has unexpected offset % instead of 36", ((cast(*void)(*instance.store_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.store_op)) == 4, "SDL_GPUColorTargetInfo.store_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetInfo.store_op)));
-        assert(((cast(*void)(*instance.resolve_texture)) - cast(*void)(*instance)) == 40, "SDL_GPUColorTargetInfo.resolve_texture has unexpected offset % instead of 40", ((cast(*void)(*instance.resolve_texture)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.resolve_texture)) == 8, "SDL_GPUColorTargetInfo.resolve_texture has unexpected size % instead of 8", size_of(type_of(SDL_GPUColorTargetInfo.resolve_texture)));
-        assert(((cast(*void)(*instance.resolve_mip_level)) - cast(*void)(*instance)) == 48, "SDL_GPUColorTargetInfo.resolve_mip_level has unexpected offset % instead of 48", ((cast(*void)(*instance.resolve_mip_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.resolve_mip_level)) == 4, "SDL_GPUColorTargetInfo.resolve_mip_level has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetInfo.resolve_mip_level)));
-        assert(((cast(*void)(*instance.resolve_layer)) - cast(*void)(*instance)) == 52, "SDL_GPUColorTargetInfo.resolve_layer has unexpected offset % instead of 52", ((cast(*void)(*instance.resolve_layer)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.resolve_layer)) == 4, "SDL_GPUColorTargetInfo.resolve_layer has unexpected size % instead of 4", size_of(type_of(SDL_GPUColorTargetInfo.resolve_layer)));
-        assert(((cast(*void)(*instance.cycle)) - cast(*void)(*instance)) == 56, "SDL_GPUColorTargetInfo.cycle has unexpected offset % instead of 56", ((cast(*void)(*instance.cycle)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.cycle)) == 1, "SDL_GPUColorTargetInfo.cycle has unexpected size % instead of 1", size_of(type_of(SDL_GPUColorTargetInfo.cycle)));
-        assert(((cast(*void)(*instance.cycle_resolve_texture)) - cast(*void)(*instance)) == 57, "SDL_GPUColorTargetInfo.cycle_resolve_texture has unexpected offset % instead of 57", ((cast(*void)(*instance.cycle_resolve_texture)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.cycle_resolve_texture)) == 1, "SDL_GPUColorTargetInfo.cycle_resolve_texture has unexpected size % instead of 1", size_of(type_of(SDL_GPUColorTargetInfo.cycle_resolve_texture)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 58, "SDL_GPUColorTargetInfo.padding1 has unexpected offset % instead of 58", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.padding1)) == 1, "SDL_GPUColorTargetInfo.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GPUColorTargetInfo.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 59, "SDL_GPUColorTargetInfo.padding2 has unexpected offset % instead of 59", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUColorTargetInfo.padding2)) == 1, "SDL_GPUColorTargetInfo.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GPUColorTargetInfo.padding2)));
+        info := type_info(SDL_GPUColorTargetInfo);
+        for info.members {
+            if it.name == {
+                case "texture";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUColorTargetInfo.texture has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUColorTargetInfo.texture has unexpected size % instead of 8", it.type.runtime_size);
+                case "mip_level";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUColorTargetInfo.mip_level has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetInfo.mip_level has unexpected size % instead of 4", it.type.runtime_size);
+                case "layer_or_depth_plane";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUColorTargetInfo.layer_or_depth_plane has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetInfo.layer_or_depth_plane has unexpected size % instead of 4", it.type.runtime_size);
+                case "clear_color";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUColorTargetInfo.clear_color has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_GPUColorTargetInfo.clear_color has unexpected size % instead of 16", it.type.runtime_size);
+                case "load_op";
+                    assert(it.offset_in_bytes == 32, "SDL_GPUColorTargetInfo.load_op has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetInfo.load_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "store_op";
+                    assert(it.offset_in_bytes == 36, "SDL_GPUColorTargetInfo.store_op has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetInfo.store_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "resolve_texture";
+                    assert(it.offset_in_bytes == 40, "SDL_GPUColorTargetInfo.resolve_texture has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUColorTargetInfo.resolve_texture has unexpected size % instead of 8", it.type.runtime_size);
+                case "resolve_mip_level";
+                    assert(it.offset_in_bytes == 48, "SDL_GPUColorTargetInfo.resolve_mip_level has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetInfo.resolve_mip_level has unexpected size % instead of 4", it.type.runtime_size);
+                case "resolve_layer";
+                    assert(it.offset_in_bytes == 52, "SDL_GPUColorTargetInfo.resolve_layer has unexpected offset % instead of 52", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUColorTargetInfo.resolve_layer has unexpected size % instead of 4", it.type.runtime_size);
+                case "cycle";
+                    assert(it.offset_in_bytes == 56, "SDL_GPUColorTargetInfo.cycle has unexpected offset % instead of 56", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUColorTargetInfo.cycle has unexpected size % instead of 1", it.type.runtime_size);
+                case "cycle_resolve_texture";
+                    assert(it.offset_in_bytes == 57, "SDL_GPUColorTargetInfo.cycle_resolve_texture has unexpected offset % instead of 57", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUColorTargetInfo.cycle_resolve_texture has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 58, "SDL_GPUColorTargetInfo.padding1 has unexpected offset % instead of 58", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUColorTargetInfo.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 59, "SDL_GPUColorTargetInfo.padding2 has unexpected offset % instead of 59", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUColorTargetInfo.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUColorTargetInfo) == 64, "SDL_GPUColorTargetInfo has size % instead of 64", size_of(SDL_GPUColorTargetInfo));
     }
 
     {
-        instance: SDL_GPUDepthStencilTargetInfo;
-        assert(((cast(*void)(*instance.texture)) - cast(*void)(*instance)) == 0, "SDL_GPUDepthStencilTargetInfo.texture has unexpected offset % instead of 0", ((cast(*void)(*instance.texture)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilTargetInfo.texture)) == 8, "SDL_GPUDepthStencilTargetInfo.texture has unexpected size % instead of 8", size_of(type_of(SDL_GPUDepthStencilTargetInfo.texture)));
-        assert(((cast(*void)(*instance.clear_depth)) - cast(*void)(*instance)) == 8, "SDL_GPUDepthStencilTargetInfo.clear_depth has unexpected offset % instead of 8", ((cast(*void)(*instance.clear_depth)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilTargetInfo.clear_depth)) == 4, "SDL_GPUDepthStencilTargetInfo.clear_depth has unexpected size % instead of 4", size_of(type_of(SDL_GPUDepthStencilTargetInfo.clear_depth)));
-        assert(((cast(*void)(*instance.load_op)) - cast(*void)(*instance)) == 12, "SDL_GPUDepthStencilTargetInfo.load_op has unexpected offset % instead of 12", ((cast(*void)(*instance.load_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilTargetInfo.load_op)) == 4, "SDL_GPUDepthStencilTargetInfo.load_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUDepthStencilTargetInfo.load_op)));
-        assert(((cast(*void)(*instance.store_op)) - cast(*void)(*instance)) == 16, "SDL_GPUDepthStencilTargetInfo.store_op has unexpected offset % instead of 16", ((cast(*void)(*instance.store_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilTargetInfo.store_op)) == 4, "SDL_GPUDepthStencilTargetInfo.store_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUDepthStencilTargetInfo.store_op)));
-        assert(((cast(*void)(*instance.stencil_load_op)) - cast(*void)(*instance)) == 20, "SDL_GPUDepthStencilTargetInfo.stencil_load_op has unexpected offset % instead of 20", ((cast(*void)(*instance.stencil_load_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilTargetInfo.stencil_load_op)) == 4, "SDL_GPUDepthStencilTargetInfo.stencil_load_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUDepthStencilTargetInfo.stencil_load_op)));
-        assert(((cast(*void)(*instance.stencil_store_op)) - cast(*void)(*instance)) == 24, "SDL_GPUDepthStencilTargetInfo.stencil_store_op has unexpected offset % instead of 24", ((cast(*void)(*instance.stencil_store_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilTargetInfo.stencil_store_op)) == 4, "SDL_GPUDepthStencilTargetInfo.stencil_store_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUDepthStencilTargetInfo.stencil_store_op)));
-        assert(((cast(*void)(*instance.cycle)) - cast(*void)(*instance)) == 28, "SDL_GPUDepthStencilTargetInfo.cycle has unexpected offset % instead of 28", ((cast(*void)(*instance.cycle)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilTargetInfo.cycle)) == 1, "SDL_GPUDepthStencilTargetInfo.cycle has unexpected size % instead of 1", size_of(type_of(SDL_GPUDepthStencilTargetInfo.cycle)));
-        assert(((cast(*void)(*instance.clear_stencil)) - cast(*void)(*instance)) == 29, "SDL_GPUDepthStencilTargetInfo.clear_stencil has unexpected offset % instead of 29", ((cast(*void)(*instance.clear_stencil)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilTargetInfo.clear_stencil)) == 1, "SDL_GPUDepthStencilTargetInfo.clear_stencil has unexpected size % instead of 1", size_of(type_of(SDL_GPUDepthStencilTargetInfo.clear_stencil)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 30, "SDL_GPUDepthStencilTargetInfo.padding1 has unexpected offset % instead of 30", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilTargetInfo.padding1)) == 1, "SDL_GPUDepthStencilTargetInfo.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GPUDepthStencilTargetInfo.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 31, "SDL_GPUDepthStencilTargetInfo.padding2 has unexpected offset % instead of 31", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUDepthStencilTargetInfo.padding2)) == 1, "SDL_GPUDepthStencilTargetInfo.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GPUDepthStencilTargetInfo.padding2)));
+        info := type_info(SDL_GPUDepthStencilTargetInfo);
+        for info.members {
+            if it.name == {
+                case "texture";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUDepthStencilTargetInfo.texture has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUDepthStencilTargetInfo.texture has unexpected size % instead of 8", it.type.runtime_size);
+                case "clear_depth";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUDepthStencilTargetInfo.clear_depth has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUDepthStencilTargetInfo.clear_depth has unexpected size % instead of 4", it.type.runtime_size);
+                case "load_op";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUDepthStencilTargetInfo.load_op has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUDepthStencilTargetInfo.load_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "store_op";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUDepthStencilTargetInfo.store_op has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUDepthStencilTargetInfo.store_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "stencil_load_op";
+                    assert(it.offset_in_bytes == 20, "SDL_GPUDepthStencilTargetInfo.stencil_load_op has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUDepthStencilTargetInfo.stencil_load_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "stencil_store_op";
+                    assert(it.offset_in_bytes == 24, "SDL_GPUDepthStencilTargetInfo.stencil_store_op has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUDepthStencilTargetInfo.stencil_store_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "cycle";
+                    assert(it.offset_in_bytes == 28, "SDL_GPUDepthStencilTargetInfo.cycle has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUDepthStencilTargetInfo.cycle has unexpected size % instead of 1", it.type.runtime_size);
+                case "clear_stencil";
+                    assert(it.offset_in_bytes == 29, "SDL_GPUDepthStencilTargetInfo.clear_stencil has unexpected offset % instead of 29", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUDepthStencilTargetInfo.clear_stencil has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 30, "SDL_GPUDepthStencilTargetInfo.padding1 has unexpected offset % instead of 30", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUDepthStencilTargetInfo.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 31, "SDL_GPUDepthStencilTargetInfo.padding2 has unexpected offset % instead of 31", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUDepthStencilTargetInfo.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUDepthStencilTargetInfo) == 32, "SDL_GPUDepthStencilTargetInfo has size % instead of 32", size_of(SDL_GPUDepthStencilTargetInfo));
     }
 
     {
-        instance: SDL_GPUBlitInfo;
-        assert(((cast(*void)(*instance.source)) - cast(*void)(*instance)) == 0, "SDL_GPUBlitInfo.source has unexpected offset % instead of 0", ((cast(*void)(*instance.source)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitInfo.source)) == 32, "SDL_GPUBlitInfo.source has unexpected size % instead of 32", size_of(type_of(SDL_GPUBlitInfo.source)));
-        assert(((cast(*void)(*instance.destination)) - cast(*void)(*instance)) == 32, "SDL_GPUBlitInfo.destination has unexpected offset % instead of 32", ((cast(*void)(*instance.destination)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitInfo.destination)) == 32, "SDL_GPUBlitInfo.destination has unexpected size % instead of 32", size_of(type_of(SDL_GPUBlitInfo.destination)));
-        assert(((cast(*void)(*instance.load_op)) - cast(*void)(*instance)) == 64, "SDL_GPUBlitInfo.load_op has unexpected offset % instead of 64", ((cast(*void)(*instance.load_op)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitInfo.load_op)) == 4, "SDL_GPUBlitInfo.load_op has unexpected size % instead of 4", size_of(type_of(SDL_GPUBlitInfo.load_op)));
-        assert(((cast(*void)(*instance.clear_color)) - cast(*void)(*instance)) == 68, "SDL_GPUBlitInfo.clear_color has unexpected offset % instead of 68", ((cast(*void)(*instance.clear_color)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitInfo.clear_color)) == 16, "SDL_GPUBlitInfo.clear_color has unexpected size % instead of 16", size_of(type_of(SDL_GPUBlitInfo.clear_color)));
-        assert(((cast(*void)(*instance.flip_mode)) - cast(*void)(*instance)) == 84, "SDL_GPUBlitInfo.flip_mode has unexpected offset % instead of 84", ((cast(*void)(*instance.flip_mode)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitInfo.flip_mode)) == 4, "SDL_GPUBlitInfo.flip_mode has unexpected size % instead of 4", size_of(type_of(SDL_GPUBlitInfo.flip_mode)));
-        assert(((cast(*void)(*instance.filter)) - cast(*void)(*instance)) == 88, "SDL_GPUBlitInfo.filter has unexpected offset % instead of 88", ((cast(*void)(*instance.filter)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitInfo.filter)) == 4, "SDL_GPUBlitInfo.filter has unexpected size % instead of 4", size_of(type_of(SDL_GPUBlitInfo.filter)));
-        assert(((cast(*void)(*instance.cycle)) - cast(*void)(*instance)) == 92, "SDL_GPUBlitInfo.cycle has unexpected offset % instead of 92", ((cast(*void)(*instance.cycle)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitInfo.cycle)) == 1, "SDL_GPUBlitInfo.cycle has unexpected size % instead of 1", size_of(type_of(SDL_GPUBlitInfo.cycle)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 93, "SDL_GPUBlitInfo.padding1 has unexpected offset % instead of 93", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitInfo.padding1)) == 1, "SDL_GPUBlitInfo.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GPUBlitInfo.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 94, "SDL_GPUBlitInfo.padding2 has unexpected offset % instead of 94", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitInfo.padding2)) == 1, "SDL_GPUBlitInfo.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GPUBlitInfo.padding2)));
-        assert(((cast(*void)(*instance.padding3)) - cast(*void)(*instance)) == 95, "SDL_GPUBlitInfo.padding3 has unexpected offset % instead of 95", ((cast(*void)(*instance.padding3)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBlitInfo.padding3)) == 1, "SDL_GPUBlitInfo.padding3 has unexpected size % instead of 1", size_of(type_of(SDL_GPUBlitInfo.padding3)));
+        info := type_info(SDL_GPUBlitInfo);
+        for info.members {
+            if it.name == {
+                case "source";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUBlitInfo.source has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 32, "SDL_GPUBlitInfo.source has unexpected size % instead of 32", it.type.runtime_size);
+                case "destination";
+                    assert(it.offset_in_bytes == 32, "SDL_GPUBlitInfo.destination has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 32, "SDL_GPUBlitInfo.destination has unexpected size % instead of 32", it.type.runtime_size);
+                case "load_op";
+                    assert(it.offset_in_bytes == 64, "SDL_GPUBlitInfo.load_op has unexpected offset % instead of 64", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBlitInfo.load_op has unexpected size % instead of 4", it.type.runtime_size);
+                case "clear_color";
+                    assert(it.offset_in_bytes == 68, "SDL_GPUBlitInfo.clear_color has unexpected offset % instead of 68", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_GPUBlitInfo.clear_color has unexpected size % instead of 16", it.type.runtime_size);
+                case "flip_mode";
+                    assert(it.offset_in_bytes == 84, "SDL_GPUBlitInfo.flip_mode has unexpected offset % instead of 84", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBlitInfo.flip_mode has unexpected size % instead of 4", it.type.runtime_size);
+                case "filter";
+                    assert(it.offset_in_bytes == 88, "SDL_GPUBlitInfo.filter has unexpected offset % instead of 88", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBlitInfo.filter has unexpected size % instead of 4", it.type.runtime_size);
+                case "cycle";
+                    assert(it.offset_in_bytes == 92, "SDL_GPUBlitInfo.cycle has unexpected offset % instead of 92", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUBlitInfo.cycle has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 93, "SDL_GPUBlitInfo.padding1 has unexpected offset % instead of 93", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUBlitInfo.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 94, "SDL_GPUBlitInfo.padding2 has unexpected offset % instead of 94", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUBlitInfo.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding3";
+                    assert(it.offset_in_bytes == 95, "SDL_GPUBlitInfo.padding3 has unexpected offset % instead of 95", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUBlitInfo.padding3 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUBlitInfo) == 96, "SDL_GPUBlitInfo has size % instead of 96", size_of(SDL_GPUBlitInfo));
     }
 
     {
-        instance: SDL_GPUBufferBinding;
-        assert(((cast(*void)(*instance.buffer)) - cast(*void)(*instance)) == 0, "SDL_GPUBufferBinding.buffer has unexpected offset % instead of 0", ((cast(*void)(*instance.buffer)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBufferBinding.buffer)) == 8, "SDL_GPUBufferBinding.buffer has unexpected size % instead of 8", size_of(type_of(SDL_GPUBufferBinding.buffer)));
-        assert(((cast(*void)(*instance.offset)) - cast(*void)(*instance)) == 8, "SDL_GPUBufferBinding.offset has unexpected offset % instead of 8", ((cast(*void)(*instance.offset)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUBufferBinding.offset)) == 4, "SDL_GPUBufferBinding.offset has unexpected size % instead of 4", size_of(type_of(SDL_GPUBufferBinding.offset)));
+        info := type_info(SDL_GPUBufferBinding);
+        for info.members {
+            if it.name == {
+                case "buffer";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUBufferBinding.buffer has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUBufferBinding.buffer has unexpected size % instead of 8", it.type.runtime_size);
+                case "offset";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUBufferBinding.offset has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUBufferBinding.offset has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUBufferBinding) == 16, "SDL_GPUBufferBinding has size % instead of 16", size_of(SDL_GPUBufferBinding));
     }
 
     {
-        instance: SDL_GPUTextureSamplerBinding;
-        assert(((cast(*void)(*instance.texture)) - cast(*void)(*instance)) == 0, "SDL_GPUTextureSamplerBinding.texture has unexpected offset % instead of 0", ((cast(*void)(*instance.texture)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureSamplerBinding.texture)) == 8, "SDL_GPUTextureSamplerBinding.texture has unexpected size % instead of 8", size_of(type_of(SDL_GPUTextureSamplerBinding.texture)));
-        assert(((cast(*void)(*instance.sampler)) - cast(*void)(*instance)) == 8, "SDL_GPUTextureSamplerBinding.sampler has unexpected offset % instead of 8", ((cast(*void)(*instance.sampler)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUTextureSamplerBinding.sampler)) == 8, "SDL_GPUTextureSamplerBinding.sampler has unexpected size % instead of 8", size_of(type_of(SDL_GPUTextureSamplerBinding.sampler)));
+        info := type_info(SDL_GPUTextureSamplerBinding);
+        for info.members {
+            if it.name == {
+                case "texture";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUTextureSamplerBinding.texture has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUTextureSamplerBinding.texture has unexpected size % instead of 8", it.type.runtime_size);
+                case "sampler";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUTextureSamplerBinding.sampler has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUTextureSamplerBinding.sampler has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUTextureSamplerBinding) == 16, "SDL_GPUTextureSamplerBinding has size % instead of 16", size_of(SDL_GPUTextureSamplerBinding));
     }
 
     {
-        instance: SDL_GPUStorageBufferReadWriteBinding;
-        assert(((cast(*void)(*instance.buffer)) - cast(*void)(*instance)) == 0, "SDL_GPUStorageBufferReadWriteBinding.buffer has unexpected offset % instead of 0", ((cast(*void)(*instance.buffer)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStorageBufferReadWriteBinding.buffer)) == 8, "SDL_GPUStorageBufferReadWriteBinding.buffer has unexpected size % instead of 8", size_of(type_of(SDL_GPUStorageBufferReadWriteBinding.buffer)));
-        assert(((cast(*void)(*instance.cycle)) - cast(*void)(*instance)) == 8, "SDL_GPUStorageBufferReadWriteBinding.cycle has unexpected offset % instead of 8", ((cast(*void)(*instance.cycle)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStorageBufferReadWriteBinding.cycle)) == 1, "SDL_GPUStorageBufferReadWriteBinding.cycle has unexpected size % instead of 1", size_of(type_of(SDL_GPUStorageBufferReadWriteBinding.cycle)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 9, "SDL_GPUStorageBufferReadWriteBinding.padding1 has unexpected offset % instead of 9", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStorageBufferReadWriteBinding.padding1)) == 1, "SDL_GPUStorageBufferReadWriteBinding.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GPUStorageBufferReadWriteBinding.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 10, "SDL_GPUStorageBufferReadWriteBinding.padding2 has unexpected offset % instead of 10", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStorageBufferReadWriteBinding.padding2)) == 1, "SDL_GPUStorageBufferReadWriteBinding.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GPUStorageBufferReadWriteBinding.padding2)));
-        assert(((cast(*void)(*instance.padding3)) - cast(*void)(*instance)) == 11, "SDL_GPUStorageBufferReadWriteBinding.padding3 has unexpected offset % instead of 11", ((cast(*void)(*instance.padding3)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStorageBufferReadWriteBinding.padding3)) == 1, "SDL_GPUStorageBufferReadWriteBinding.padding3 has unexpected size % instead of 1", size_of(type_of(SDL_GPUStorageBufferReadWriteBinding.padding3)));
+        info := type_info(SDL_GPUStorageBufferReadWriteBinding);
+        for info.members {
+            if it.name == {
+                case "buffer";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUStorageBufferReadWriteBinding.buffer has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUStorageBufferReadWriteBinding.buffer has unexpected size % instead of 8", it.type.runtime_size);
+                case "cycle";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUStorageBufferReadWriteBinding.cycle has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUStorageBufferReadWriteBinding.cycle has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 9, "SDL_GPUStorageBufferReadWriteBinding.padding1 has unexpected offset % instead of 9", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUStorageBufferReadWriteBinding.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 10, "SDL_GPUStorageBufferReadWriteBinding.padding2 has unexpected offset % instead of 10", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUStorageBufferReadWriteBinding.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding3";
+                    assert(it.offset_in_bytes == 11, "SDL_GPUStorageBufferReadWriteBinding.padding3 has unexpected offset % instead of 11", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUStorageBufferReadWriteBinding.padding3 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUStorageBufferReadWriteBinding) == 16, "SDL_GPUStorageBufferReadWriteBinding has size % instead of 16", size_of(SDL_GPUStorageBufferReadWriteBinding));
     }
 
     {
-        instance: SDL_GPUStorageTextureReadWriteBinding;
-        assert(((cast(*void)(*instance.texture)) - cast(*void)(*instance)) == 0, "SDL_GPUStorageTextureReadWriteBinding.texture has unexpected offset % instead of 0", ((cast(*void)(*instance.texture)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.texture)) == 8, "SDL_GPUStorageTextureReadWriteBinding.texture has unexpected size % instead of 8", size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.texture)));
-        assert(((cast(*void)(*instance.mip_level)) - cast(*void)(*instance)) == 8, "SDL_GPUStorageTextureReadWriteBinding.mip_level has unexpected offset % instead of 8", ((cast(*void)(*instance.mip_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.mip_level)) == 4, "SDL_GPUStorageTextureReadWriteBinding.mip_level has unexpected size % instead of 4", size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.mip_level)));
-        assert(((cast(*void)(*instance.layer)) - cast(*void)(*instance)) == 12, "SDL_GPUStorageTextureReadWriteBinding.layer has unexpected offset % instead of 12", ((cast(*void)(*instance.layer)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.layer)) == 4, "SDL_GPUStorageTextureReadWriteBinding.layer has unexpected size % instead of 4", size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.layer)));
-        assert(((cast(*void)(*instance.cycle)) - cast(*void)(*instance)) == 16, "SDL_GPUStorageTextureReadWriteBinding.cycle has unexpected offset % instead of 16", ((cast(*void)(*instance.cycle)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.cycle)) == 1, "SDL_GPUStorageTextureReadWriteBinding.cycle has unexpected size % instead of 1", size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.cycle)));
-        assert(((cast(*void)(*instance.padding1)) - cast(*void)(*instance)) == 17, "SDL_GPUStorageTextureReadWriteBinding.padding1 has unexpected offset % instead of 17", ((cast(*void)(*instance.padding1)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.padding1)) == 1, "SDL_GPUStorageTextureReadWriteBinding.padding1 has unexpected size % instead of 1", size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.padding1)));
-        assert(((cast(*void)(*instance.padding2)) - cast(*void)(*instance)) == 18, "SDL_GPUStorageTextureReadWriteBinding.padding2 has unexpected offset % instead of 18", ((cast(*void)(*instance.padding2)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.padding2)) == 1, "SDL_GPUStorageTextureReadWriteBinding.padding2 has unexpected size % instead of 1", size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.padding2)));
-        assert(((cast(*void)(*instance.padding3)) - cast(*void)(*instance)) == 19, "SDL_GPUStorageTextureReadWriteBinding.padding3 has unexpected offset % instead of 19", ((cast(*void)(*instance.padding3)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.padding3)) == 1, "SDL_GPUStorageTextureReadWriteBinding.padding3 has unexpected size % instead of 1", size_of(type_of(SDL_GPUStorageTextureReadWriteBinding.padding3)));
+        info := type_info(SDL_GPUStorageTextureReadWriteBinding);
+        for info.members {
+            if it.name == {
+                case "texture";
+                    assert(it.offset_in_bytes == 0, "SDL_GPUStorageTextureReadWriteBinding.texture has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_GPUStorageTextureReadWriteBinding.texture has unexpected size % instead of 8", it.type.runtime_size);
+                case "mip_level";
+                    assert(it.offset_in_bytes == 8, "SDL_GPUStorageTextureReadWriteBinding.mip_level has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUStorageTextureReadWriteBinding.mip_level has unexpected size % instead of 4", it.type.runtime_size);
+                case "layer";
+                    assert(it.offset_in_bytes == 12, "SDL_GPUStorageTextureReadWriteBinding.layer has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_GPUStorageTextureReadWriteBinding.layer has unexpected size % instead of 4", it.type.runtime_size);
+                case "cycle";
+                    assert(it.offset_in_bytes == 16, "SDL_GPUStorageTextureReadWriteBinding.cycle has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUStorageTextureReadWriteBinding.cycle has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding1";
+                    assert(it.offset_in_bytes == 17, "SDL_GPUStorageTextureReadWriteBinding.padding1 has unexpected offset % instead of 17", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUStorageTextureReadWriteBinding.padding1 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding2";
+                    assert(it.offset_in_bytes == 18, "SDL_GPUStorageTextureReadWriteBinding.padding2 has unexpected offset % instead of 18", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUStorageTextureReadWriteBinding.padding2 has unexpected size % instead of 1", it.type.runtime_size);
+                case "padding3";
+                    assert(it.offset_in_bytes == 19, "SDL_GPUStorageTextureReadWriteBinding.padding3 has unexpected offset % instead of 19", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_GPUStorageTextureReadWriteBinding.padding3 has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_GPUStorageTextureReadWriteBinding) == 24, "SDL_GPUStorageTextureReadWriteBinding has size % instead of 24", size_of(SDL_GPUStorageTextureReadWriteBinding));
     }
 
     {
-        instance: SDL_HapticDirection;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_HapticDirection.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticDirection.type)) == 1, "SDL_HapticDirection.type has unexpected size % instead of 1", size_of(type_of(SDL_HapticDirection.type)));
-        assert(((cast(*void)(*instance.dir)) - cast(*void)(*instance)) == 4, "SDL_HapticDirection.dir has unexpected offset % instead of 4", ((cast(*void)(*instance.dir)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticDirection.dir)) == 12, "SDL_HapticDirection.dir has unexpected size % instead of 12", size_of(type_of(SDL_HapticDirection.dir)));
+        info := type_info(SDL_HapticDirection);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticDirection.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_HapticDirection.type has unexpected size % instead of 1", it.type.runtime_size);
+                case "dir";
+                    assert(it.offset_in_bytes == 4, "SDL_HapticDirection.dir has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 12, "SDL_HapticDirection.dir has unexpected size % instead of 12", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_HapticDirection) == 16, "SDL_HapticDirection has size % instead of 16", size_of(SDL_HapticDirection));
     }
 
     {
-        instance: SDL_HapticConstant;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_HapticConstant.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticConstant.type)) == 2, "SDL_HapticConstant.type has unexpected size % instead of 2", size_of(type_of(SDL_HapticConstant.type)));
-        assert(((cast(*void)(*instance.direction)) - cast(*void)(*instance)) == 4, "SDL_HapticConstant.direction has unexpected offset % instead of 4", ((cast(*void)(*instance.direction)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticConstant.direction)) == 16, "SDL_HapticConstant.direction has unexpected size % instead of 16", size_of(type_of(SDL_HapticConstant.direction)));
-        assert(((cast(*void)(*instance.length)) - cast(*void)(*instance)) == 20, "SDL_HapticConstant.length has unexpected offset % instead of 20", ((cast(*void)(*instance.length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticConstant.length)) == 4, "SDL_HapticConstant.length has unexpected size % instead of 4", size_of(type_of(SDL_HapticConstant.length)));
-        assert(((cast(*void)(*instance.delay)) - cast(*void)(*instance)) == 24, "SDL_HapticConstant.delay has unexpected offset % instead of 24", ((cast(*void)(*instance.delay)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticConstant.delay)) == 2, "SDL_HapticConstant.delay has unexpected size % instead of 2", size_of(type_of(SDL_HapticConstant.delay)));
-        assert(((cast(*void)(*instance.button)) - cast(*void)(*instance)) == 26, "SDL_HapticConstant.button has unexpected offset % instead of 26", ((cast(*void)(*instance.button)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticConstant.button)) == 2, "SDL_HapticConstant.button has unexpected size % instead of 2", size_of(type_of(SDL_HapticConstant.button)));
-        assert(((cast(*void)(*instance.interval)) - cast(*void)(*instance)) == 28, "SDL_HapticConstant.interval has unexpected offset % instead of 28", ((cast(*void)(*instance.interval)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticConstant.interval)) == 2, "SDL_HapticConstant.interval has unexpected size % instead of 2", size_of(type_of(SDL_HapticConstant.interval)));
-        assert(((cast(*void)(*instance.level)) - cast(*void)(*instance)) == 30, "SDL_HapticConstant.level has unexpected offset % instead of 30", ((cast(*void)(*instance.level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticConstant.level)) == 2, "SDL_HapticConstant.level has unexpected size % instead of 2", size_of(type_of(SDL_HapticConstant.level)));
-        assert(((cast(*void)(*instance.attack_length)) - cast(*void)(*instance)) == 32, "SDL_HapticConstant.attack_length has unexpected offset % instead of 32", ((cast(*void)(*instance.attack_length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticConstant.attack_length)) == 2, "SDL_HapticConstant.attack_length has unexpected size % instead of 2", size_of(type_of(SDL_HapticConstant.attack_length)));
-        assert(((cast(*void)(*instance.attack_level)) - cast(*void)(*instance)) == 34, "SDL_HapticConstant.attack_level has unexpected offset % instead of 34", ((cast(*void)(*instance.attack_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticConstant.attack_level)) == 2, "SDL_HapticConstant.attack_level has unexpected size % instead of 2", size_of(type_of(SDL_HapticConstant.attack_level)));
-        assert(((cast(*void)(*instance.fade_length)) - cast(*void)(*instance)) == 36, "SDL_HapticConstant.fade_length has unexpected offset % instead of 36", ((cast(*void)(*instance.fade_length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticConstant.fade_length)) == 2, "SDL_HapticConstant.fade_length has unexpected size % instead of 2", size_of(type_of(SDL_HapticConstant.fade_length)));
-        assert(((cast(*void)(*instance.fade_level)) - cast(*void)(*instance)) == 38, "SDL_HapticConstant.fade_level has unexpected offset % instead of 38", ((cast(*void)(*instance.fade_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticConstant.fade_level)) == 2, "SDL_HapticConstant.fade_level has unexpected size % instead of 2", size_of(type_of(SDL_HapticConstant.fade_level)));
+        info := type_info(SDL_HapticConstant);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticConstant.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticConstant.type has unexpected size % instead of 2", it.type.runtime_size);
+                case "direction";
+                    assert(it.offset_in_bytes == 4, "SDL_HapticConstant.direction has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_HapticConstant.direction has unexpected size % instead of 16", it.type.runtime_size);
+                case "length";
+                    assert(it.offset_in_bytes == 20, "SDL_HapticConstant.length has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_HapticConstant.length has unexpected size % instead of 4", it.type.runtime_size);
+                case "delay";
+                    assert(it.offset_in_bytes == 24, "SDL_HapticConstant.delay has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticConstant.delay has unexpected size % instead of 2", it.type.runtime_size);
+                case "button";
+                    assert(it.offset_in_bytes == 26, "SDL_HapticConstant.button has unexpected offset % instead of 26", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticConstant.button has unexpected size % instead of 2", it.type.runtime_size);
+                case "interval";
+                    assert(it.offset_in_bytes == 28, "SDL_HapticConstant.interval has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticConstant.interval has unexpected size % instead of 2", it.type.runtime_size);
+                case "level";
+                    assert(it.offset_in_bytes == 30, "SDL_HapticConstant.level has unexpected offset % instead of 30", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticConstant.level has unexpected size % instead of 2", it.type.runtime_size);
+                case "attack_length";
+                    assert(it.offset_in_bytes == 32, "SDL_HapticConstant.attack_length has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticConstant.attack_length has unexpected size % instead of 2", it.type.runtime_size);
+                case "attack_level";
+                    assert(it.offset_in_bytes == 34, "SDL_HapticConstant.attack_level has unexpected offset % instead of 34", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticConstant.attack_level has unexpected size % instead of 2", it.type.runtime_size);
+                case "fade_length";
+                    assert(it.offset_in_bytes == 36, "SDL_HapticConstant.fade_length has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticConstant.fade_length has unexpected size % instead of 2", it.type.runtime_size);
+                case "fade_level";
+                    assert(it.offset_in_bytes == 38, "SDL_HapticConstant.fade_level has unexpected offset % instead of 38", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticConstant.fade_level has unexpected size % instead of 2", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_HapticConstant) == 40, "SDL_HapticConstant has size % instead of 40", size_of(SDL_HapticConstant));
     }
 
     {
-        instance: SDL_HapticPeriodic;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_HapticPeriodic.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.type)) == 2, "SDL_HapticPeriodic.type has unexpected size % instead of 2", size_of(type_of(SDL_HapticPeriodic.type)));
-        assert(((cast(*void)(*instance.direction)) - cast(*void)(*instance)) == 4, "SDL_HapticPeriodic.direction has unexpected offset % instead of 4", ((cast(*void)(*instance.direction)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.direction)) == 16, "SDL_HapticPeriodic.direction has unexpected size % instead of 16", size_of(type_of(SDL_HapticPeriodic.direction)));
-        assert(((cast(*void)(*instance.length)) - cast(*void)(*instance)) == 20, "SDL_HapticPeriodic.length has unexpected offset % instead of 20", ((cast(*void)(*instance.length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.length)) == 4, "SDL_HapticPeriodic.length has unexpected size % instead of 4", size_of(type_of(SDL_HapticPeriodic.length)));
-        assert(((cast(*void)(*instance.delay)) - cast(*void)(*instance)) == 24, "SDL_HapticPeriodic.delay has unexpected offset % instead of 24", ((cast(*void)(*instance.delay)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.delay)) == 2, "SDL_HapticPeriodic.delay has unexpected size % instead of 2", size_of(type_of(SDL_HapticPeriodic.delay)));
-        assert(((cast(*void)(*instance.button)) - cast(*void)(*instance)) == 26, "SDL_HapticPeriodic.button has unexpected offset % instead of 26", ((cast(*void)(*instance.button)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.button)) == 2, "SDL_HapticPeriodic.button has unexpected size % instead of 2", size_of(type_of(SDL_HapticPeriodic.button)));
-        assert(((cast(*void)(*instance.interval)) - cast(*void)(*instance)) == 28, "SDL_HapticPeriodic.interval has unexpected offset % instead of 28", ((cast(*void)(*instance.interval)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.interval)) == 2, "SDL_HapticPeriodic.interval has unexpected size % instead of 2", size_of(type_of(SDL_HapticPeriodic.interval)));
-        assert(((cast(*void)(*instance.period)) - cast(*void)(*instance)) == 30, "SDL_HapticPeriodic.period has unexpected offset % instead of 30", ((cast(*void)(*instance.period)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.period)) == 2, "SDL_HapticPeriodic.period has unexpected size % instead of 2", size_of(type_of(SDL_HapticPeriodic.period)));
-        assert(((cast(*void)(*instance.magnitude)) - cast(*void)(*instance)) == 32, "SDL_HapticPeriodic.magnitude has unexpected offset % instead of 32", ((cast(*void)(*instance.magnitude)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.magnitude)) == 2, "SDL_HapticPeriodic.magnitude has unexpected size % instead of 2", size_of(type_of(SDL_HapticPeriodic.magnitude)));
-        assert(((cast(*void)(*instance.offset)) - cast(*void)(*instance)) == 34, "SDL_HapticPeriodic.offset has unexpected offset % instead of 34", ((cast(*void)(*instance.offset)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.offset)) == 2, "SDL_HapticPeriodic.offset has unexpected size % instead of 2", size_of(type_of(SDL_HapticPeriodic.offset)));
-        assert(((cast(*void)(*instance.phase)) - cast(*void)(*instance)) == 36, "SDL_HapticPeriodic.phase has unexpected offset % instead of 36", ((cast(*void)(*instance.phase)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.phase)) == 2, "SDL_HapticPeriodic.phase has unexpected size % instead of 2", size_of(type_of(SDL_HapticPeriodic.phase)));
-        assert(((cast(*void)(*instance.attack_length)) - cast(*void)(*instance)) == 38, "SDL_HapticPeriodic.attack_length has unexpected offset % instead of 38", ((cast(*void)(*instance.attack_length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.attack_length)) == 2, "SDL_HapticPeriodic.attack_length has unexpected size % instead of 2", size_of(type_of(SDL_HapticPeriodic.attack_length)));
-        assert(((cast(*void)(*instance.attack_level)) - cast(*void)(*instance)) == 40, "SDL_HapticPeriodic.attack_level has unexpected offset % instead of 40", ((cast(*void)(*instance.attack_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.attack_level)) == 2, "SDL_HapticPeriodic.attack_level has unexpected size % instead of 2", size_of(type_of(SDL_HapticPeriodic.attack_level)));
-        assert(((cast(*void)(*instance.fade_length)) - cast(*void)(*instance)) == 42, "SDL_HapticPeriodic.fade_length has unexpected offset % instead of 42", ((cast(*void)(*instance.fade_length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.fade_length)) == 2, "SDL_HapticPeriodic.fade_length has unexpected size % instead of 2", size_of(type_of(SDL_HapticPeriodic.fade_length)));
-        assert(((cast(*void)(*instance.fade_level)) - cast(*void)(*instance)) == 44, "SDL_HapticPeriodic.fade_level has unexpected offset % instead of 44", ((cast(*void)(*instance.fade_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticPeriodic.fade_level)) == 2, "SDL_HapticPeriodic.fade_level has unexpected size % instead of 2", size_of(type_of(SDL_HapticPeriodic.fade_level)));
+        info := type_info(SDL_HapticPeriodic);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticPeriodic.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticPeriodic.type has unexpected size % instead of 2", it.type.runtime_size);
+                case "direction";
+                    assert(it.offset_in_bytes == 4, "SDL_HapticPeriodic.direction has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_HapticPeriodic.direction has unexpected size % instead of 16", it.type.runtime_size);
+                case "length";
+                    assert(it.offset_in_bytes == 20, "SDL_HapticPeriodic.length has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_HapticPeriodic.length has unexpected size % instead of 4", it.type.runtime_size);
+                case "delay";
+                    assert(it.offset_in_bytes == 24, "SDL_HapticPeriodic.delay has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticPeriodic.delay has unexpected size % instead of 2", it.type.runtime_size);
+                case "button";
+                    assert(it.offset_in_bytes == 26, "SDL_HapticPeriodic.button has unexpected offset % instead of 26", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticPeriodic.button has unexpected size % instead of 2", it.type.runtime_size);
+                case "interval";
+                    assert(it.offset_in_bytes == 28, "SDL_HapticPeriodic.interval has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticPeriodic.interval has unexpected size % instead of 2", it.type.runtime_size);
+                case "period";
+                    assert(it.offset_in_bytes == 30, "SDL_HapticPeriodic.period has unexpected offset % instead of 30", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticPeriodic.period has unexpected size % instead of 2", it.type.runtime_size);
+                case "magnitude";
+                    assert(it.offset_in_bytes == 32, "SDL_HapticPeriodic.magnitude has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticPeriodic.magnitude has unexpected size % instead of 2", it.type.runtime_size);
+                case "offset";
+                    assert(it.offset_in_bytes == 34, "SDL_HapticPeriodic.offset has unexpected offset % instead of 34", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticPeriodic.offset has unexpected size % instead of 2", it.type.runtime_size);
+                case "phase";
+                    assert(it.offset_in_bytes == 36, "SDL_HapticPeriodic.phase has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticPeriodic.phase has unexpected size % instead of 2", it.type.runtime_size);
+                case "attack_length";
+                    assert(it.offset_in_bytes == 38, "SDL_HapticPeriodic.attack_length has unexpected offset % instead of 38", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticPeriodic.attack_length has unexpected size % instead of 2", it.type.runtime_size);
+                case "attack_level";
+                    assert(it.offset_in_bytes == 40, "SDL_HapticPeriodic.attack_level has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticPeriodic.attack_level has unexpected size % instead of 2", it.type.runtime_size);
+                case "fade_length";
+                    assert(it.offset_in_bytes == 42, "SDL_HapticPeriodic.fade_length has unexpected offset % instead of 42", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticPeriodic.fade_length has unexpected size % instead of 2", it.type.runtime_size);
+                case "fade_level";
+                    assert(it.offset_in_bytes == 44, "SDL_HapticPeriodic.fade_level has unexpected offset % instead of 44", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticPeriodic.fade_level has unexpected size % instead of 2", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_HapticPeriodic) == 48, "SDL_HapticPeriodic has size % instead of 48", size_of(SDL_HapticPeriodic));
     }
 
     {
-        instance: SDL_HapticCondition;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_HapticCondition.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCondition.type)) == 2, "SDL_HapticCondition.type has unexpected size % instead of 2", size_of(type_of(SDL_HapticCondition.type)));
-        assert(((cast(*void)(*instance.direction)) - cast(*void)(*instance)) == 4, "SDL_HapticCondition.direction has unexpected offset % instead of 4", ((cast(*void)(*instance.direction)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCondition.direction)) == 16, "SDL_HapticCondition.direction has unexpected size % instead of 16", size_of(type_of(SDL_HapticCondition.direction)));
-        assert(((cast(*void)(*instance.length)) - cast(*void)(*instance)) == 20, "SDL_HapticCondition.length has unexpected offset % instead of 20", ((cast(*void)(*instance.length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCondition.length)) == 4, "SDL_HapticCondition.length has unexpected size % instead of 4", size_of(type_of(SDL_HapticCondition.length)));
-        assert(((cast(*void)(*instance.delay)) - cast(*void)(*instance)) == 24, "SDL_HapticCondition.delay has unexpected offset % instead of 24", ((cast(*void)(*instance.delay)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCondition.delay)) == 2, "SDL_HapticCondition.delay has unexpected size % instead of 2", size_of(type_of(SDL_HapticCondition.delay)));
-        assert(((cast(*void)(*instance.button)) - cast(*void)(*instance)) == 26, "SDL_HapticCondition.button has unexpected offset % instead of 26", ((cast(*void)(*instance.button)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCondition.button)) == 2, "SDL_HapticCondition.button has unexpected size % instead of 2", size_of(type_of(SDL_HapticCondition.button)));
-        assert(((cast(*void)(*instance.interval)) - cast(*void)(*instance)) == 28, "SDL_HapticCondition.interval has unexpected offset % instead of 28", ((cast(*void)(*instance.interval)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCondition.interval)) == 2, "SDL_HapticCondition.interval has unexpected size % instead of 2", size_of(type_of(SDL_HapticCondition.interval)));
-        assert(((cast(*void)(*instance.right_sat)) - cast(*void)(*instance)) == 30, "SDL_HapticCondition.right_sat has unexpected offset % instead of 30", ((cast(*void)(*instance.right_sat)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCondition.right_sat)) == 6, "SDL_HapticCondition.right_sat has unexpected size % instead of 6", size_of(type_of(SDL_HapticCondition.right_sat)));
-        assert(((cast(*void)(*instance.left_sat)) - cast(*void)(*instance)) == 36, "SDL_HapticCondition.left_sat has unexpected offset % instead of 36", ((cast(*void)(*instance.left_sat)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCondition.left_sat)) == 6, "SDL_HapticCondition.left_sat has unexpected size % instead of 6", size_of(type_of(SDL_HapticCondition.left_sat)));
-        assert(((cast(*void)(*instance.right_coeff)) - cast(*void)(*instance)) == 42, "SDL_HapticCondition.right_coeff has unexpected offset % instead of 42", ((cast(*void)(*instance.right_coeff)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCondition.right_coeff)) == 6, "SDL_HapticCondition.right_coeff has unexpected size % instead of 6", size_of(type_of(SDL_HapticCondition.right_coeff)));
-        assert(((cast(*void)(*instance.left_coeff)) - cast(*void)(*instance)) == 48, "SDL_HapticCondition.left_coeff has unexpected offset % instead of 48", ((cast(*void)(*instance.left_coeff)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCondition.left_coeff)) == 6, "SDL_HapticCondition.left_coeff has unexpected size % instead of 6", size_of(type_of(SDL_HapticCondition.left_coeff)));
-        assert(((cast(*void)(*instance.deadband)) - cast(*void)(*instance)) == 54, "SDL_HapticCondition.deadband has unexpected offset % instead of 54", ((cast(*void)(*instance.deadband)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCondition.deadband)) == 6, "SDL_HapticCondition.deadband has unexpected size % instead of 6", size_of(type_of(SDL_HapticCondition.deadband)));
-        assert(((cast(*void)(*instance.center)) - cast(*void)(*instance)) == 60, "SDL_HapticCondition.center has unexpected offset % instead of 60", ((cast(*void)(*instance.center)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCondition.center)) == 6, "SDL_HapticCondition.center has unexpected size % instead of 6", size_of(type_of(SDL_HapticCondition.center)));
+        info := type_info(SDL_HapticCondition);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticCondition.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCondition.type has unexpected size % instead of 2", it.type.runtime_size);
+                case "direction";
+                    assert(it.offset_in_bytes == 4, "SDL_HapticCondition.direction has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_HapticCondition.direction has unexpected size % instead of 16", it.type.runtime_size);
+                case "length";
+                    assert(it.offset_in_bytes == 20, "SDL_HapticCondition.length has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_HapticCondition.length has unexpected size % instead of 4", it.type.runtime_size);
+                case "delay";
+                    assert(it.offset_in_bytes == 24, "SDL_HapticCondition.delay has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCondition.delay has unexpected size % instead of 2", it.type.runtime_size);
+                case "button";
+                    assert(it.offset_in_bytes == 26, "SDL_HapticCondition.button has unexpected offset % instead of 26", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCondition.button has unexpected size % instead of 2", it.type.runtime_size);
+                case "interval";
+                    assert(it.offset_in_bytes == 28, "SDL_HapticCondition.interval has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCondition.interval has unexpected size % instead of 2", it.type.runtime_size);
+                case "right_sat";
+                    assert(it.offset_in_bytes == 30, "SDL_HapticCondition.right_sat has unexpected offset % instead of 30", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 6, "SDL_HapticCondition.right_sat has unexpected size % instead of 6", it.type.runtime_size);
+                case "left_sat";
+                    assert(it.offset_in_bytes == 36, "SDL_HapticCondition.left_sat has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 6, "SDL_HapticCondition.left_sat has unexpected size % instead of 6", it.type.runtime_size);
+                case "right_coeff";
+                    assert(it.offset_in_bytes == 42, "SDL_HapticCondition.right_coeff has unexpected offset % instead of 42", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 6, "SDL_HapticCondition.right_coeff has unexpected size % instead of 6", it.type.runtime_size);
+                case "left_coeff";
+                    assert(it.offset_in_bytes == 48, "SDL_HapticCondition.left_coeff has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 6, "SDL_HapticCondition.left_coeff has unexpected size % instead of 6", it.type.runtime_size);
+                case "deadband";
+                    assert(it.offset_in_bytes == 54, "SDL_HapticCondition.deadband has unexpected offset % instead of 54", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 6, "SDL_HapticCondition.deadband has unexpected size % instead of 6", it.type.runtime_size);
+                case "center";
+                    assert(it.offset_in_bytes == 60, "SDL_HapticCondition.center has unexpected offset % instead of 60", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 6, "SDL_HapticCondition.center has unexpected size % instead of 6", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_HapticCondition) == 68, "SDL_HapticCondition has size % instead of 68", size_of(SDL_HapticCondition));
     }
 
     {
-        instance: SDL_HapticRamp;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_HapticRamp.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticRamp.type)) == 2, "SDL_HapticRamp.type has unexpected size % instead of 2", size_of(type_of(SDL_HapticRamp.type)));
-        assert(((cast(*void)(*instance.direction)) - cast(*void)(*instance)) == 4, "SDL_HapticRamp.direction has unexpected offset % instead of 4", ((cast(*void)(*instance.direction)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticRamp.direction)) == 16, "SDL_HapticRamp.direction has unexpected size % instead of 16", size_of(type_of(SDL_HapticRamp.direction)));
-        assert(((cast(*void)(*instance.length)) - cast(*void)(*instance)) == 20, "SDL_HapticRamp.length has unexpected offset % instead of 20", ((cast(*void)(*instance.length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticRamp.length)) == 4, "SDL_HapticRamp.length has unexpected size % instead of 4", size_of(type_of(SDL_HapticRamp.length)));
-        assert(((cast(*void)(*instance.delay)) - cast(*void)(*instance)) == 24, "SDL_HapticRamp.delay has unexpected offset % instead of 24", ((cast(*void)(*instance.delay)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticRamp.delay)) == 2, "SDL_HapticRamp.delay has unexpected size % instead of 2", size_of(type_of(SDL_HapticRamp.delay)));
-        assert(((cast(*void)(*instance.button)) - cast(*void)(*instance)) == 26, "SDL_HapticRamp.button has unexpected offset % instead of 26", ((cast(*void)(*instance.button)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticRamp.button)) == 2, "SDL_HapticRamp.button has unexpected size % instead of 2", size_of(type_of(SDL_HapticRamp.button)));
-        assert(((cast(*void)(*instance.interval)) - cast(*void)(*instance)) == 28, "SDL_HapticRamp.interval has unexpected offset % instead of 28", ((cast(*void)(*instance.interval)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticRamp.interval)) == 2, "SDL_HapticRamp.interval has unexpected size % instead of 2", size_of(type_of(SDL_HapticRamp.interval)));
-        assert(((cast(*void)(*instance.start)) - cast(*void)(*instance)) == 30, "SDL_HapticRamp.start has unexpected offset % instead of 30", ((cast(*void)(*instance.start)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticRamp.start)) == 2, "SDL_HapticRamp.start has unexpected size % instead of 2", size_of(type_of(SDL_HapticRamp.start)));
-        assert(((cast(*void)(*instance.end)) - cast(*void)(*instance)) == 32, "SDL_HapticRamp.end has unexpected offset % instead of 32", ((cast(*void)(*instance.end)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticRamp.end)) == 2, "SDL_HapticRamp.end has unexpected size % instead of 2", size_of(type_of(SDL_HapticRamp.end)));
-        assert(((cast(*void)(*instance.attack_length)) - cast(*void)(*instance)) == 34, "SDL_HapticRamp.attack_length has unexpected offset % instead of 34", ((cast(*void)(*instance.attack_length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticRamp.attack_length)) == 2, "SDL_HapticRamp.attack_length has unexpected size % instead of 2", size_of(type_of(SDL_HapticRamp.attack_length)));
-        assert(((cast(*void)(*instance.attack_level)) - cast(*void)(*instance)) == 36, "SDL_HapticRamp.attack_level has unexpected offset % instead of 36", ((cast(*void)(*instance.attack_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticRamp.attack_level)) == 2, "SDL_HapticRamp.attack_level has unexpected size % instead of 2", size_of(type_of(SDL_HapticRamp.attack_level)));
-        assert(((cast(*void)(*instance.fade_length)) - cast(*void)(*instance)) == 38, "SDL_HapticRamp.fade_length has unexpected offset % instead of 38", ((cast(*void)(*instance.fade_length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticRamp.fade_length)) == 2, "SDL_HapticRamp.fade_length has unexpected size % instead of 2", size_of(type_of(SDL_HapticRamp.fade_length)));
-        assert(((cast(*void)(*instance.fade_level)) - cast(*void)(*instance)) == 40, "SDL_HapticRamp.fade_level has unexpected offset % instead of 40", ((cast(*void)(*instance.fade_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticRamp.fade_level)) == 2, "SDL_HapticRamp.fade_level has unexpected size % instead of 2", size_of(type_of(SDL_HapticRamp.fade_level)));
+        info := type_info(SDL_HapticRamp);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticRamp.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticRamp.type has unexpected size % instead of 2", it.type.runtime_size);
+                case "direction";
+                    assert(it.offset_in_bytes == 4, "SDL_HapticRamp.direction has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_HapticRamp.direction has unexpected size % instead of 16", it.type.runtime_size);
+                case "length";
+                    assert(it.offset_in_bytes == 20, "SDL_HapticRamp.length has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_HapticRamp.length has unexpected size % instead of 4", it.type.runtime_size);
+                case "delay";
+                    assert(it.offset_in_bytes == 24, "SDL_HapticRamp.delay has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticRamp.delay has unexpected size % instead of 2", it.type.runtime_size);
+                case "button";
+                    assert(it.offset_in_bytes == 26, "SDL_HapticRamp.button has unexpected offset % instead of 26", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticRamp.button has unexpected size % instead of 2", it.type.runtime_size);
+                case "interval";
+                    assert(it.offset_in_bytes == 28, "SDL_HapticRamp.interval has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticRamp.interval has unexpected size % instead of 2", it.type.runtime_size);
+                case "start";
+                    assert(it.offset_in_bytes == 30, "SDL_HapticRamp.start has unexpected offset % instead of 30", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticRamp.start has unexpected size % instead of 2", it.type.runtime_size);
+                case "end";
+                    assert(it.offset_in_bytes == 32, "SDL_HapticRamp.end has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticRamp.end has unexpected size % instead of 2", it.type.runtime_size);
+                case "attack_length";
+                    assert(it.offset_in_bytes == 34, "SDL_HapticRamp.attack_length has unexpected offset % instead of 34", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticRamp.attack_length has unexpected size % instead of 2", it.type.runtime_size);
+                case "attack_level";
+                    assert(it.offset_in_bytes == 36, "SDL_HapticRamp.attack_level has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticRamp.attack_level has unexpected size % instead of 2", it.type.runtime_size);
+                case "fade_length";
+                    assert(it.offset_in_bytes == 38, "SDL_HapticRamp.fade_length has unexpected offset % instead of 38", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticRamp.fade_length has unexpected size % instead of 2", it.type.runtime_size);
+                case "fade_level";
+                    assert(it.offset_in_bytes == 40, "SDL_HapticRamp.fade_level has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticRamp.fade_level has unexpected size % instead of 2", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_HapticRamp) == 44, "SDL_HapticRamp has size % instead of 44", size_of(SDL_HapticRamp));
     }
 
     {
-        instance: SDL_HapticLeftRight;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_HapticLeftRight.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticLeftRight.type)) == 2, "SDL_HapticLeftRight.type has unexpected size % instead of 2", size_of(type_of(SDL_HapticLeftRight.type)));
-        assert(((cast(*void)(*instance.length)) - cast(*void)(*instance)) == 4, "SDL_HapticLeftRight.length has unexpected offset % instead of 4", ((cast(*void)(*instance.length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticLeftRight.length)) == 4, "SDL_HapticLeftRight.length has unexpected size % instead of 4", size_of(type_of(SDL_HapticLeftRight.length)));
-        assert(((cast(*void)(*instance.large_magnitude)) - cast(*void)(*instance)) == 8, "SDL_HapticLeftRight.large_magnitude has unexpected offset % instead of 8", ((cast(*void)(*instance.large_magnitude)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticLeftRight.large_magnitude)) == 2, "SDL_HapticLeftRight.large_magnitude has unexpected size % instead of 2", size_of(type_of(SDL_HapticLeftRight.large_magnitude)));
-        assert(((cast(*void)(*instance.small_magnitude)) - cast(*void)(*instance)) == 10, "SDL_HapticLeftRight.small_magnitude has unexpected offset % instead of 10", ((cast(*void)(*instance.small_magnitude)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticLeftRight.small_magnitude)) == 2, "SDL_HapticLeftRight.small_magnitude has unexpected size % instead of 2", size_of(type_of(SDL_HapticLeftRight.small_magnitude)));
+        info := type_info(SDL_HapticLeftRight);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticLeftRight.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticLeftRight.type has unexpected size % instead of 2", it.type.runtime_size);
+                case "length";
+                    assert(it.offset_in_bytes == 4, "SDL_HapticLeftRight.length has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_HapticLeftRight.length has unexpected size % instead of 4", it.type.runtime_size);
+                case "large_magnitude";
+                    assert(it.offset_in_bytes == 8, "SDL_HapticLeftRight.large_magnitude has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticLeftRight.large_magnitude has unexpected size % instead of 2", it.type.runtime_size);
+                case "small_magnitude";
+                    assert(it.offset_in_bytes == 10, "SDL_HapticLeftRight.small_magnitude has unexpected offset % instead of 10", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticLeftRight.small_magnitude has unexpected size % instead of 2", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_HapticLeftRight) == 12, "SDL_HapticLeftRight has size % instead of 12", size_of(SDL_HapticLeftRight));
     }
 
     {
-        instance: SDL_HapticCustom;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_HapticCustom.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.type)) == 2, "SDL_HapticCustom.type has unexpected size % instead of 2", size_of(type_of(SDL_HapticCustom.type)));
-        assert(((cast(*void)(*instance.direction)) - cast(*void)(*instance)) == 4, "SDL_HapticCustom.direction has unexpected offset % instead of 4", ((cast(*void)(*instance.direction)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.direction)) == 16, "SDL_HapticCustom.direction has unexpected size % instead of 16", size_of(type_of(SDL_HapticCustom.direction)));
-        assert(((cast(*void)(*instance.length)) - cast(*void)(*instance)) == 20, "SDL_HapticCustom.length has unexpected offset % instead of 20", ((cast(*void)(*instance.length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.length)) == 4, "SDL_HapticCustom.length has unexpected size % instead of 4", size_of(type_of(SDL_HapticCustom.length)));
-        assert(((cast(*void)(*instance.delay)) - cast(*void)(*instance)) == 24, "SDL_HapticCustom.delay has unexpected offset % instead of 24", ((cast(*void)(*instance.delay)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.delay)) == 2, "SDL_HapticCustom.delay has unexpected size % instead of 2", size_of(type_of(SDL_HapticCustom.delay)));
-        assert(((cast(*void)(*instance.button)) - cast(*void)(*instance)) == 26, "SDL_HapticCustom.button has unexpected offset % instead of 26", ((cast(*void)(*instance.button)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.button)) == 2, "SDL_HapticCustom.button has unexpected size % instead of 2", size_of(type_of(SDL_HapticCustom.button)));
-        assert(((cast(*void)(*instance.interval)) - cast(*void)(*instance)) == 28, "SDL_HapticCustom.interval has unexpected offset % instead of 28", ((cast(*void)(*instance.interval)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.interval)) == 2, "SDL_HapticCustom.interval has unexpected size % instead of 2", size_of(type_of(SDL_HapticCustom.interval)));
-        assert(((cast(*void)(*instance.channels)) - cast(*void)(*instance)) == 30, "SDL_HapticCustom.channels has unexpected offset % instead of 30", ((cast(*void)(*instance.channels)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.channels)) == 1, "SDL_HapticCustom.channels has unexpected size % instead of 1", size_of(type_of(SDL_HapticCustom.channels)));
-        assert(((cast(*void)(*instance.period)) - cast(*void)(*instance)) == 32, "SDL_HapticCustom.period has unexpected offset % instead of 32", ((cast(*void)(*instance.period)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.period)) == 2, "SDL_HapticCustom.period has unexpected size % instead of 2", size_of(type_of(SDL_HapticCustom.period)));
-        assert(((cast(*void)(*instance.samples)) - cast(*void)(*instance)) == 34, "SDL_HapticCustom.samples has unexpected offset % instead of 34", ((cast(*void)(*instance.samples)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.samples)) == 2, "SDL_HapticCustom.samples has unexpected size % instead of 2", size_of(type_of(SDL_HapticCustom.samples)));
-        assert(((cast(*void)(*instance.data)) - cast(*void)(*instance)) == 40, "SDL_HapticCustom.data has unexpected offset % instead of 40", ((cast(*void)(*instance.data)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.data)) == 8, "SDL_HapticCustom.data has unexpected size % instead of 8", size_of(type_of(SDL_HapticCustom.data)));
-        assert(((cast(*void)(*instance.attack_length)) - cast(*void)(*instance)) == 48, "SDL_HapticCustom.attack_length has unexpected offset % instead of 48", ((cast(*void)(*instance.attack_length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.attack_length)) == 2, "SDL_HapticCustom.attack_length has unexpected size % instead of 2", size_of(type_of(SDL_HapticCustom.attack_length)));
-        assert(((cast(*void)(*instance.attack_level)) - cast(*void)(*instance)) == 50, "SDL_HapticCustom.attack_level has unexpected offset % instead of 50", ((cast(*void)(*instance.attack_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.attack_level)) == 2, "SDL_HapticCustom.attack_level has unexpected size % instead of 2", size_of(type_of(SDL_HapticCustom.attack_level)));
-        assert(((cast(*void)(*instance.fade_length)) - cast(*void)(*instance)) == 52, "SDL_HapticCustom.fade_length has unexpected offset % instead of 52", ((cast(*void)(*instance.fade_length)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.fade_length)) == 2, "SDL_HapticCustom.fade_length has unexpected size % instead of 2", size_of(type_of(SDL_HapticCustom.fade_length)));
-        assert(((cast(*void)(*instance.fade_level)) - cast(*void)(*instance)) == 54, "SDL_HapticCustom.fade_level has unexpected offset % instead of 54", ((cast(*void)(*instance.fade_level)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticCustom.fade_level)) == 2, "SDL_HapticCustom.fade_level has unexpected size % instead of 2", size_of(type_of(SDL_HapticCustom.fade_level)));
+        info := type_info(SDL_HapticCustom);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticCustom.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCustom.type has unexpected size % instead of 2", it.type.runtime_size);
+                case "direction";
+                    assert(it.offset_in_bytes == 4, "SDL_HapticCustom.direction has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_HapticCustom.direction has unexpected size % instead of 16", it.type.runtime_size);
+                case "length";
+                    assert(it.offset_in_bytes == 20, "SDL_HapticCustom.length has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_HapticCustom.length has unexpected size % instead of 4", it.type.runtime_size);
+                case "delay";
+                    assert(it.offset_in_bytes == 24, "SDL_HapticCustom.delay has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCustom.delay has unexpected size % instead of 2", it.type.runtime_size);
+                case "button";
+                    assert(it.offset_in_bytes == 26, "SDL_HapticCustom.button has unexpected offset % instead of 26", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCustom.button has unexpected size % instead of 2", it.type.runtime_size);
+                case "interval";
+                    assert(it.offset_in_bytes == 28, "SDL_HapticCustom.interval has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCustom.interval has unexpected size % instead of 2", it.type.runtime_size);
+                case "channels";
+                    assert(it.offset_in_bytes == 30, "SDL_HapticCustom.channels has unexpected offset % instead of 30", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_HapticCustom.channels has unexpected size % instead of 1", it.type.runtime_size);
+                case "period";
+                    assert(it.offset_in_bytes == 32, "SDL_HapticCustom.period has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCustom.period has unexpected size % instead of 2", it.type.runtime_size);
+                case "samples";
+                    assert(it.offset_in_bytes == 34, "SDL_HapticCustom.samples has unexpected offset % instead of 34", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCustom.samples has unexpected size % instead of 2", it.type.runtime_size);
+                case "data";
+                    assert(it.offset_in_bytes == 40, "SDL_HapticCustom.data has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_HapticCustom.data has unexpected size % instead of 8", it.type.runtime_size);
+                case "attack_length";
+                    assert(it.offset_in_bytes == 48, "SDL_HapticCustom.attack_length has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCustom.attack_length has unexpected size % instead of 2", it.type.runtime_size);
+                case "attack_level";
+                    assert(it.offset_in_bytes == 50, "SDL_HapticCustom.attack_level has unexpected offset % instead of 50", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCustom.attack_level has unexpected size % instead of 2", it.type.runtime_size);
+                case "fade_length";
+                    assert(it.offset_in_bytes == 52, "SDL_HapticCustom.fade_length has unexpected offset % instead of 52", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCustom.fade_length has unexpected size % instead of 2", it.type.runtime_size);
+                case "fade_level";
+                    assert(it.offset_in_bytes == 54, "SDL_HapticCustom.fade_level has unexpected offset % instead of 54", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticCustom.fade_level has unexpected size % instead of 2", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_HapticCustom) == 56, "SDL_HapticCustom has size % instead of 56", size_of(SDL_HapticCustom));
     }
 
     {
-        instance: SDL_HapticEffect;
-        assert(((cast(*void)(*instance.type)) - cast(*void)(*instance)) == 0, "SDL_HapticEffect.type has unexpected offset % instead of 0", ((cast(*void)(*instance.type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticEffect.type)) == 2, "SDL_HapticEffect.type has unexpected size % instead of 2", size_of(type_of(SDL_HapticEffect.type)));
-        assert(((cast(*void)(*instance.constant)) - cast(*void)(*instance)) == 0, "SDL_HapticEffect.constant has unexpected offset % instead of 0", ((cast(*void)(*instance.constant)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticEffect.constant)) == 40, "SDL_HapticEffect.constant has unexpected size % instead of 40", size_of(type_of(SDL_HapticEffect.constant)));
-        assert(((cast(*void)(*instance.periodic)) - cast(*void)(*instance)) == 0, "SDL_HapticEffect.periodic has unexpected offset % instead of 0", ((cast(*void)(*instance.periodic)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticEffect.periodic)) == 48, "SDL_HapticEffect.periodic has unexpected size % instead of 48", size_of(type_of(SDL_HapticEffect.periodic)));
-        assert(((cast(*void)(*instance.condition)) - cast(*void)(*instance)) == 0, "SDL_HapticEffect.condition has unexpected offset % instead of 0", ((cast(*void)(*instance.condition)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticEffect.condition)) == 68, "SDL_HapticEffect.condition has unexpected size % instead of 68", size_of(type_of(SDL_HapticEffect.condition)));
-        assert(((cast(*void)(*instance.ramp)) - cast(*void)(*instance)) == 0, "SDL_HapticEffect.ramp has unexpected offset % instead of 0", ((cast(*void)(*instance.ramp)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticEffect.ramp)) == 44, "SDL_HapticEffect.ramp has unexpected size % instead of 44", size_of(type_of(SDL_HapticEffect.ramp)));
-        assert(((cast(*void)(*instance.leftright)) - cast(*void)(*instance)) == 0, "SDL_HapticEffect.leftright has unexpected offset % instead of 0", ((cast(*void)(*instance.leftright)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticEffect.leftright)) == 12, "SDL_HapticEffect.leftright has unexpected size % instead of 12", size_of(type_of(SDL_HapticEffect.leftright)));
-        assert(((cast(*void)(*instance.custom)) - cast(*void)(*instance)) == 0, "SDL_HapticEffect.custom has unexpected offset % instead of 0", ((cast(*void)(*instance.custom)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_HapticEffect.custom)) == 56, "SDL_HapticEffect.custom has unexpected size % instead of 56", size_of(type_of(SDL_HapticEffect.custom)));
+        info := type_info(SDL_HapticEffect);
+        for info.members {
+            if it.name == {
+                case "type";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticEffect.type has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_HapticEffect.type has unexpected size % instead of 2", it.type.runtime_size);
+                case "constant";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticEffect.constant has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 40, "SDL_HapticEffect.constant has unexpected size % instead of 40", it.type.runtime_size);
+                case "periodic";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticEffect.periodic has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 48, "SDL_HapticEffect.periodic has unexpected size % instead of 48", it.type.runtime_size);
+                case "condition";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticEffect.condition has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 68, "SDL_HapticEffect.condition has unexpected size % instead of 68", it.type.runtime_size);
+                case "ramp";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticEffect.ramp has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 44, "SDL_HapticEffect.ramp has unexpected size % instead of 44", it.type.runtime_size);
+                case "leftright";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticEffect.leftright has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 12, "SDL_HapticEffect.leftright has unexpected size % instead of 12", it.type.runtime_size);
+                case "custom";
+                    assert(it.offset_in_bytes == 0, "SDL_HapticEffect.custom has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 56, "SDL_HapticEffect.custom has unexpected size % instead of 56", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_HapticEffect) == 72, "SDL_HapticEffect has size % instead of 72", size_of(SDL_HapticEffect));
     }
 
     {
-        instance: SDL_hid_device_info;
-        assert(((cast(*void)(*instance.path)) - cast(*void)(*instance)) == 0, "SDL_hid_device_info.path has unexpected offset % instead of 0", ((cast(*void)(*instance.path)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.path)) == 8, "SDL_hid_device_info.path has unexpected size % instead of 8", size_of(type_of(SDL_hid_device_info.path)));
-        assert(((cast(*void)(*instance.vendor_id)) - cast(*void)(*instance)) == 8, "SDL_hid_device_info.vendor_id has unexpected offset % instead of 8", ((cast(*void)(*instance.vendor_id)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.vendor_id)) == 2, "SDL_hid_device_info.vendor_id has unexpected size % instead of 2", size_of(type_of(SDL_hid_device_info.vendor_id)));
-        assert(((cast(*void)(*instance.product_id)) - cast(*void)(*instance)) == 10, "SDL_hid_device_info.product_id has unexpected offset % instead of 10", ((cast(*void)(*instance.product_id)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.product_id)) == 2, "SDL_hid_device_info.product_id has unexpected size % instead of 2", size_of(type_of(SDL_hid_device_info.product_id)));
-        assert(((cast(*void)(*instance.serial_number)) - cast(*void)(*instance)) == 16, "SDL_hid_device_info.serial_number has unexpected offset % instead of 16", ((cast(*void)(*instance.serial_number)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.serial_number)) == 8, "SDL_hid_device_info.serial_number has unexpected size % instead of 8", size_of(type_of(SDL_hid_device_info.serial_number)));
-        assert(((cast(*void)(*instance.release_number)) - cast(*void)(*instance)) == 24, "SDL_hid_device_info.release_number has unexpected offset % instead of 24", ((cast(*void)(*instance.release_number)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.release_number)) == 2, "SDL_hid_device_info.release_number has unexpected size % instead of 2", size_of(type_of(SDL_hid_device_info.release_number)));
-        assert(((cast(*void)(*instance.manufacturer_string)) - cast(*void)(*instance)) == 32, "SDL_hid_device_info.manufacturer_string has unexpected offset % instead of 32", ((cast(*void)(*instance.manufacturer_string)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.manufacturer_string)) == 8, "SDL_hid_device_info.manufacturer_string has unexpected size % instead of 8", size_of(type_of(SDL_hid_device_info.manufacturer_string)));
-        assert(((cast(*void)(*instance.product_string)) - cast(*void)(*instance)) == 40, "SDL_hid_device_info.product_string has unexpected offset % instead of 40", ((cast(*void)(*instance.product_string)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.product_string)) == 8, "SDL_hid_device_info.product_string has unexpected size % instead of 8", size_of(type_of(SDL_hid_device_info.product_string)));
-        assert(((cast(*void)(*instance.usage_page)) - cast(*void)(*instance)) == 48, "SDL_hid_device_info.usage_page has unexpected offset % instead of 48", ((cast(*void)(*instance.usage_page)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.usage_page)) == 2, "SDL_hid_device_info.usage_page has unexpected size % instead of 2", size_of(type_of(SDL_hid_device_info.usage_page)));
-        assert(((cast(*void)(*instance.usage)) - cast(*void)(*instance)) == 50, "SDL_hid_device_info.usage has unexpected offset % instead of 50", ((cast(*void)(*instance.usage)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.usage)) == 2, "SDL_hid_device_info.usage has unexpected size % instead of 2", size_of(type_of(SDL_hid_device_info.usage)));
-        assert(((cast(*void)(*instance.interface_number)) - cast(*void)(*instance)) == 52, "SDL_hid_device_info.interface_number has unexpected offset % instead of 52", ((cast(*void)(*instance.interface_number)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.interface_number)) == 4, "SDL_hid_device_info.interface_number has unexpected size % instead of 4", size_of(type_of(SDL_hid_device_info.interface_number)));
-        assert(((cast(*void)(*instance.interface_class)) - cast(*void)(*instance)) == 56, "SDL_hid_device_info.interface_class has unexpected offset % instead of 56", ((cast(*void)(*instance.interface_class)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.interface_class)) == 4, "SDL_hid_device_info.interface_class has unexpected size % instead of 4", size_of(type_of(SDL_hid_device_info.interface_class)));
-        assert(((cast(*void)(*instance.interface_subclass)) - cast(*void)(*instance)) == 60, "SDL_hid_device_info.interface_subclass has unexpected offset % instead of 60", ((cast(*void)(*instance.interface_subclass)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.interface_subclass)) == 4, "SDL_hid_device_info.interface_subclass has unexpected size % instead of 4", size_of(type_of(SDL_hid_device_info.interface_subclass)));
-        assert(((cast(*void)(*instance.interface_protocol)) - cast(*void)(*instance)) == 64, "SDL_hid_device_info.interface_protocol has unexpected offset % instead of 64", ((cast(*void)(*instance.interface_protocol)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.interface_protocol)) == 4, "SDL_hid_device_info.interface_protocol has unexpected size % instead of 4", size_of(type_of(SDL_hid_device_info.interface_protocol)));
-        assert(((cast(*void)(*instance.bus_type)) - cast(*void)(*instance)) == 68, "SDL_hid_device_info.bus_type has unexpected offset % instead of 68", ((cast(*void)(*instance.bus_type)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.bus_type)) == 4, "SDL_hid_device_info.bus_type has unexpected size % instead of 4", size_of(type_of(SDL_hid_device_info.bus_type)));
-        assert(((cast(*void)(*instance.next)) - cast(*void)(*instance)) == 72, "SDL_hid_device_info.next has unexpected offset % instead of 72", ((cast(*void)(*instance.next)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_hid_device_info.next)) == 8, "SDL_hid_device_info.next has unexpected size % instead of 8", size_of(type_of(SDL_hid_device_info.next)));
+        info := type_info(SDL_hid_device_info);
+        for info.members {
+            if it.name == {
+                case "path";
+                    assert(it.offset_in_bytes == 0, "SDL_hid_device_info.path has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_hid_device_info.path has unexpected size % instead of 8", it.type.runtime_size);
+                case "vendor_id";
+                    assert(it.offset_in_bytes == 8, "SDL_hid_device_info.vendor_id has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_hid_device_info.vendor_id has unexpected size % instead of 2", it.type.runtime_size);
+                case "product_id";
+                    assert(it.offset_in_bytes == 10, "SDL_hid_device_info.product_id has unexpected offset % instead of 10", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_hid_device_info.product_id has unexpected size % instead of 2", it.type.runtime_size);
+                case "serial_number";
+                    assert(it.offset_in_bytes == 16, "SDL_hid_device_info.serial_number has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_hid_device_info.serial_number has unexpected size % instead of 8", it.type.runtime_size);
+                case "release_number";
+                    assert(it.offset_in_bytes == 24, "SDL_hid_device_info.release_number has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_hid_device_info.release_number has unexpected size % instead of 2", it.type.runtime_size);
+                case "manufacturer_string";
+                    assert(it.offset_in_bytes == 32, "SDL_hid_device_info.manufacturer_string has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_hid_device_info.manufacturer_string has unexpected size % instead of 8", it.type.runtime_size);
+                case "product_string";
+                    assert(it.offset_in_bytes == 40, "SDL_hid_device_info.product_string has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_hid_device_info.product_string has unexpected size % instead of 8", it.type.runtime_size);
+                case "usage_page";
+                    assert(it.offset_in_bytes == 48, "SDL_hid_device_info.usage_page has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_hid_device_info.usage_page has unexpected size % instead of 2", it.type.runtime_size);
+                case "usage";
+                    assert(it.offset_in_bytes == 50, "SDL_hid_device_info.usage has unexpected offset % instead of 50", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 2, "SDL_hid_device_info.usage has unexpected size % instead of 2", it.type.runtime_size);
+                case "interface_number";
+                    assert(it.offset_in_bytes == 52, "SDL_hid_device_info.interface_number has unexpected offset % instead of 52", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_hid_device_info.interface_number has unexpected size % instead of 4", it.type.runtime_size);
+                case "interface_class";
+                    assert(it.offset_in_bytes == 56, "SDL_hid_device_info.interface_class has unexpected offset % instead of 56", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_hid_device_info.interface_class has unexpected size % instead of 4", it.type.runtime_size);
+                case "interface_subclass";
+                    assert(it.offset_in_bytes == 60, "SDL_hid_device_info.interface_subclass has unexpected offset % instead of 60", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_hid_device_info.interface_subclass has unexpected size % instead of 4", it.type.runtime_size);
+                case "interface_protocol";
+                    assert(it.offset_in_bytes == 64, "SDL_hid_device_info.interface_protocol has unexpected offset % instead of 64", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_hid_device_info.interface_protocol has unexpected size % instead of 4", it.type.runtime_size);
+                case "bus_type";
+                    assert(it.offset_in_bytes == 68, "SDL_hid_device_info.bus_type has unexpected offset % instead of 68", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_hid_device_info.bus_type has unexpected size % instead of 4", it.type.runtime_size);
+                case "next";
+                    assert(it.offset_in_bytes == 72, "SDL_hid_device_info.next has unexpected offset % instead of 72", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_hid_device_info.next has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_hid_device_info) == 80, "SDL_hid_device_info has size % instead of 80", size_of(SDL_hid_device_info));
     }
 
     {
-        instance: SDL_Locale;
-        assert(((cast(*void)(*instance.language)) - cast(*void)(*instance)) == 0, "SDL_Locale.language has unexpected offset % instead of 0", ((cast(*void)(*instance.language)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Locale.language)) == 8, "SDL_Locale.language has unexpected size % instead of 8", size_of(type_of(SDL_Locale.language)));
-        assert(((cast(*void)(*instance.country)) - cast(*void)(*instance)) == 8, "SDL_Locale.country has unexpected offset % instead of 8", ((cast(*void)(*instance.country)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Locale.country)) == 8, "SDL_Locale.country has unexpected size % instead of 8", size_of(type_of(SDL_Locale.country)));
+        info := type_info(SDL_Locale);
+        for info.members {
+            if it.name == {
+                case "language";
+                    assert(it.offset_in_bytes == 0, "SDL_Locale.language has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_Locale.language has unexpected size % instead of 8", it.type.runtime_size);
+                case "country";
+                    assert(it.offset_in_bytes == 8, "SDL_Locale.country has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_Locale.country has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_Locale) == 16, "SDL_Locale has size % instead of 16", size_of(SDL_Locale));
     }
 
     {
-        instance: SDL_MessageBoxButtonData;
-        assert(((cast(*void)(*instance.flags)) - cast(*void)(*instance)) == 0, "SDL_MessageBoxButtonData.flags has unexpected offset % instead of 0", ((cast(*void)(*instance.flags)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxButtonData.flags)) == 4, "SDL_MessageBoxButtonData.flags has unexpected size % instead of 4", size_of(type_of(SDL_MessageBoxButtonData.flags)));
-        assert(((cast(*void)(*instance.buttonID)) - cast(*void)(*instance)) == 4, "SDL_MessageBoxButtonData.buttonID has unexpected offset % instead of 4", ((cast(*void)(*instance.buttonID)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxButtonData.buttonID)) == 4, "SDL_MessageBoxButtonData.buttonID has unexpected size % instead of 4", size_of(type_of(SDL_MessageBoxButtonData.buttonID)));
-        assert(((cast(*void)(*instance.text)) - cast(*void)(*instance)) == 8, "SDL_MessageBoxButtonData.text has unexpected offset % instead of 8", ((cast(*void)(*instance.text)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxButtonData.text)) == 8, "SDL_MessageBoxButtonData.text has unexpected size % instead of 8", size_of(type_of(SDL_MessageBoxButtonData.text)));
+        info := type_info(SDL_MessageBoxButtonData);
+        for info.members {
+            if it.name == {
+                case "flags";
+                    assert(it.offset_in_bytes == 0, "SDL_MessageBoxButtonData.flags has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MessageBoxButtonData.flags has unexpected size % instead of 4", it.type.runtime_size);
+                case "buttonID";
+                    assert(it.offset_in_bytes == 4, "SDL_MessageBoxButtonData.buttonID has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MessageBoxButtonData.buttonID has unexpected size % instead of 4", it.type.runtime_size);
+                case "text";
+                    assert(it.offset_in_bytes == 8, "SDL_MessageBoxButtonData.text has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_MessageBoxButtonData.text has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_MessageBoxButtonData) == 16, "SDL_MessageBoxButtonData has size % instead of 16", size_of(SDL_MessageBoxButtonData));
     }
 
     {
-        instance: SDL_MessageBoxColor;
-        assert(((cast(*void)(*instance.r)) - cast(*void)(*instance)) == 0, "SDL_MessageBoxColor.r has unexpected offset % instead of 0", ((cast(*void)(*instance.r)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxColor.r)) == 1, "SDL_MessageBoxColor.r has unexpected size % instead of 1", size_of(type_of(SDL_MessageBoxColor.r)));
-        assert(((cast(*void)(*instance.g)) - cast(*void)(*instance)) == 1, "SDL_MessageBoxColor.g has unexpected offset % instead of 1", ((cast(*void)(*instance.g)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxColor.g)) == 1, "SDL_MessageBoxColor.g has unexpected size % instead of 1", size_of(type_of(SDL_MessageBoxColor.g)));
-        assert(((cast(*void)(*instance.b)) - cast(*void)(*instance)) == 2, "SDL_MessageBoxColor.b has unexpected offset % instead of 2", ((cast(*void)(*instance.b)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxColor.b)) == 1, "SDL_MessageBoxColor.b has unexpected size % instead of 1", size_of(type_of(SDL_MessageBoxColor.b)));
+        info := type_info(SDL_MessageBoxColor);
+        for info.members {
+            if it.name == {
+                case "r";
+                    assert(it.offset_in_bytes == 0, "SDL_MessageBoxColor.r has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_MessageBoxColor.r has unexpected size % instead of 1", it.type.runtime_size);
+                case "g";
+                    assert(it.offset_in_bytes == 1, "SDL_MessageBoxColor.g has unexpected offset % instead of 1", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_MessageBoxColor.g has unexpected size % instead of 1", it.type.runtime_size);
+                case "b";
+                    assert(it.offset_in_bytes == 2, "SDL_MessageBoxColor.b has unexpected offset % instead of 2", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_MessageBoxColor.b has unexpected size % instead of 1", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_MessageBoxColor) == 3, "SDL_MessageBoxColor has size % instead of 3", size_of(SDL_MessageBoxColor));
     }
 
     {
-        instance: SDL_MessageBoxColorScheme;
-        assert(((cast(*void)(*instance.colors)) - cast(*void)(*instance)) == 0, "SDL_MessageBoxColorScheme.colors has unexpected offset % instead of 0", ((cast(*void)(*instance.colors)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxColorScheme.colors)) == 15, "SDL_MessageBoxColorScheme.colors has unexpected size % instead of 15", size_of(type_of(SDL_MessageBoxColorScheme.colors)));
+        info := type_info(SDL_MessageBoxColorScheme);
+        for info.members {
+            if it.name == {
+                case "colors";
+                    assert(it.offset_in_bytes == 0, "SDL_MessageBoxColorScheme.colors has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 15, "SDL_MessageBoxColorScheme.colors has unexpected size % instead of 15", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_MessageBoxColorScheme) == 15, "SDL_MessageBoxColorScheme has size % instead of 15", size_of(SDL_MessageBoxColorScheme));
     }
 
     {
-        instance: SDL_MessageBoxData;
-        assert(((cast(*void)(*instance.flags)) - cast(*void)(*instance)) == 0, "SDL_MessageBoxData.flags has unexpected offset % instead of 0", ((cast(*void)(*instance.flags)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxData.flags)) == 4, "SDL_MessageBoxData.flags has unexpected size % instead of 4", size_of(type_of(SDL_MessageBoxData.flags)));
-        assert(((cast(*void)(*instance.window)) - cast(*void)(*instance)) == 8, "SDL_MessageBoxData.window has unexpected offset % instead of 8", ((cast(*void)(*instance.window)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxData.window)) == 8, "SDL_MessageBoxData.window has unexpected size % instead of 8", size_of(type_of(SDL_MessageBoxData.window)));
-        assert(((cast(*void)(*instance.title)) - cast(*void)(*instance)) == 16, "SDL_MessageBoxData.title has unexpected offset % instead of 16", ((cast(*void)(*instance.title)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxData.title)) == 8, "SDL_MessageBoxData.title has unexpected size % instead of 8", size_of(type_of(SDL_MessageBoxData.title)));
-        assert(((cast(*void)(*instance.message)) - cast(*void)(*instance)) == 24, "SDL_MessageBoxData.message has unexpected offset % instead of 24", ((cast(*void)(*instance.message)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxData.message)) == 8, "SDL_MessageBoxData.message has unexpected size % instead of 8", size_of(type_of(SDL_MessageBoxData.message)));
-        assert(((cast(*void)(*instance.numbuttons)) - cast(*void)(*instance)) == 32, "SDL_MessageBoxData.numbuttons has unexpected offset % instead of 32", ((cast(*void)(*instance.numbuttons)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxData.numbuttons)) == 4, "SDL_MessageBoxData.numbuttons has unexpected size % instead of 4", size_of(type_of(SDL_MessageBoxData.numbuttons)));
-        assert(((cast(*void)(*instance.buttons)) - cast(*void)(*instance)) == 40, "SDL_MessageBoxData.buttons has unexpected offset % instead of 40", ((cast(*void)(*instance.buttons)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxData.buttons)) == 8, "SDL_MessageBoxData.buttons has unexpected size % instead of 8", size_of(type_of(SDL_MessageBoxData.buttons)));
-        assert(((cast(*void)(*instance.colorScheme)) - cast(*void)(*instance)) == 48, "SDL_MessageBoxData.colorScheme has unexpected offset % instead of 48", ((cast(*void)(*instance.colorScheme)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_MessageBoxData.colorScheme)) == 8, "SDL_MessageBoxData.colorScheme has unexpected size % instead of 8", size_of(type_of(SDL_MessageBoxData.colorScheme)));
+        info := type_info(SDL_MessageBoxData);
+        for info.members {
+            if it.name == {
+                case "flags";
+                    assert(it.offset_in_bytes == 0, "SDL_MessageBoxData.flags has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MessageBoxData.flags has unexpected size % instead of 4", it.type.runtime_size);
+                case "window";
+                    assert(it.offset_in_bytes == 8, "SDL_MessageBoxData.window has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_MessageBoxData.window has unexpected size % instead of 8", it.type.runtime_size);
+                case "title";
+                    assert(it.offset_in_bytes == 16, "SDL_MessageBoxData.title has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_MessageBoxData.title has unexpected size % instead of 8", it.type.runtime_size);
+                case "message";
+                    assert(it.offset_in_bytes == 24, "SDL_MessageBoxData.message has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_MessageBoxData.message has unexpected size % instead of 8", it.type.runtime_size);
+                case "numbuttons";
+                    assert(it.offset_in_bytes == 32, "SDL_MessageBoxData.numbuttons has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_MessageBoxData.numbuttons has unexpected size % instead of 4", it.type.runtime_size);
+                case "buttons";
+                    assert(it.offset_in_bytes == 40, "SDL_MessageBoxData.buttons has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_MessageBoxData.buttons has unexpected size % instead of 8", it.type.runtime_size);
+                case "colorScheme";
+                    assert(it.offset_in_bytes == 48, "SDL_MessageBoxData.colorScheme has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_MessageBoxData.colorScheme has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_MessageBoxData) == 56, "SDL_MessageBoxData has size % instead of 56", size_of(SDL_MessageBoxData));
     }
 
     {
-        instance: SDL_Vertex;
-        assert(((cast(*void)(*instance.position)) - cast(*void)(*instance)) == 0, "SDL_Vertex.position has unexpected offset % instead of 0", ((cast(*void)(*instance.position)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Vertex.position)) == 8, "SDL_Vertex.position has unexpected size % instead of 8", size_of(type_of(SDL_Vertex.position)));
-        assert(((cast(*void)(*instance.color)) - cast(*void)(*instance)) == 8, "SDL_Vertex.color has unexpected offset % instead of 8", ((cast(*void)(*instance.color)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Vertex.color)) == 16, "SDL_Vertex.color has unexpected size % instead of 16", size_of(type_of(SDL_Vertex.color)));
-        assert(((cast(*void)(*instance.tex_coord)) - cast(*void)(*instance)) == 24, "SDL_Vertex.tex_coord has unexpected offset % instead of 24", ((cast(*void)(*instance.tex_coord)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Vertex.tex_coord)) == 8, "SDL_Vertex.tex_coord has unexpected size % instead of 8", size_of(type_of(SDL_Vertex.tex_coord)));
+        info := type_info(SDL_Vertex);
+        for info.members {
+            if it.name == {
+                case "position";
+                    assert(it.offset_in_bytes == 0, "SDL_Vertex.position has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_Vertex.position has unexpected size % instead of 8", it.type.runtime_size);
+                case "color";
+                    assert(it.offset_in_bytes == 8, "SDL_Vertex.color has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 16, "SDL_Vertex.color has unexpected size % instead of 16", it.type.runtime_size);
+                case "tex_coord";
+                    assert(it.offset_in_bytes == 24, "SDL_Vertex.tex_coord has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_Vertex.tex_coord has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_Vertex) == 32, "SDL_Vertex has size % instead of 32", size_of(SDL_Vertex));
     }
 
     {
-        instance: SDL_Texture;
-        assert(((cast(*void)(*instance.format)) - cast(*void)(*instance)) == 0, "SDL_Texture.format has unexpected offset % instead of 0", ((cast(*void)(*instance.format)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Texture.format)) == 4, "SDL_Texture.format has unexpected size % instead of 4", size_of(type_of(SDL_Texture.format)));
-        assert(((cast(*void)(*instance.w)) - cast(*void)(*instance)) == 4, "SDL_Texture.w has unexpected offset % instead of 4", ((cast(*void)(*instance.w)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Texture.w)) == 4, "SDL_Texture.w has unexpected size % instead of 4", size_of(type_of(SDL_Texture.w)));
-        assert(((cast(*void)(*instance.h)) - cast(*void)(*instance)) == 8, "SDL_Texture.h has unexpected offset % instead of 8", ((cast(*void)(*instance.h)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Texture.h)) == 4, "SDL_Texture.h has unexpected size % instead of 4", size_of(type_of(SDL_Texture.h)));
-        assert(((cast(*void)(*instance.refcount)) - cast(*void)(*instance)) == 12, "SDL_Texture.refcount has unexpected offset % instead of 12", ((cast(*void)(*instance.refcount)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_Texture.refcount)) == 4, "SDL_Texture.refcount has unexpected size % instead of 4", size_of(type_of(SDL_Texture.refcount)));
+        info := type_info(SDL_Texture);
+        for info.members {
+            if it.name == {
+                case "format";
+                    assert(it.offset_in_bytes == 0, "SDL_Texture.format has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Texture.format has unexpected size % instead of 4", it.type.runtime_size);
+                case "w";
+                    assert(it.offset_in_bytes == 4, "SDL_Texture.w has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Texture.w has unexpected size % instead of 4", it.type.runtime_size);
+                case "h";
+                    assert(it.offset_in_bytes == 8, "SDL_Texture.h has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Texture.h has unexpected size % instead of 4", it.type.runtime_size);
+                case "refcount";
+                    assert(it.offset_in_bytes == 12, "SDL_Texture.refcount has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_Texture.refcount has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_Texture) == 16, "SDL_Texture has size % instead of 16", size_of(SDL_Texture));
     }
 
     {
-        instance: SDL_StorageInterface;
-        assert(((cast(*void)(*instance.version)) - cast(*void)(*instance)) == 0, "SDL_StorageInterface.version has unexpected offset % instead of 0", ((cast(*void)(*instance.version)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_StorageInterface.version)) == 4, "SDL_StorageInterface.version has unexpected size % instead of 4", size_of(type_of(SDL_StorageInterface.version)));
-        assert(((cast(*void)(*instance.close)) - cast(*void)(*instance)) == 8, "SDL_StorageInterface.close has unexpected offset % instead of 8", ((cast(*void)(*instance.close)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_StorageInterface.close)) == 8, "SDL_StorageInterface.close has unexpected size % instead of 8", size_of(type_of(SDL_StorageInterface.close)));
-        assert(((cast(*void)(*instance.ready)) - cast(*void)(*instance)) == 16, "SDL_StorageInterface.ready has unexpected offset % instead of 16", ((cast(*void)(*instance.ready)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_StorageInterface.ready)) == 8, "SDL_StorageInterface.ready has unexpected size % instead of 8", size_of(type_of(SDL_StorageInterface.ready)));
-        assert(((cast(*void)(*instance.enumerate)) - cast(*void)(*instance)) == 24, "SDL_StorageInterface.enumerate has unexpected offset % instead of 24", ((cast(*void)(*instance.enumerate)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_StorageInterface.enumerate)) == 8, "SDL_StorageInterface.enumerate has unexpected size % instead of 8", size_of(type_of(SDL_StorageInterface.enumerate)));
-        assert(((cast(*void)(*instance.info)) - cast(*void)(*instance)) == 32, "SDL_StorageInterface.info has unexpected offset % instead of 32", ((cast(*void)(*instance.info)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_StorageInterface.info)) == 8, "SDL_StorageInterface.info has unexpected size % instead of 8", size_of(type_of(SDL_StorageInterface.info)));
-        assert(((cast(*void)(*instance.read_file)) - cast(*void)(*instance)) == 40, "SDL_StorageInterface.read_file has unexpected offset % instead of 40", ((cast(*void)(*instance.read_file)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_StorageInterface.read_file)) == 8, "SDL_StorageInterface.read_file has unexpected size % instead of 8", size_of(type_of(SDL_StorageInterface.read_file)));
-        assert(((cast(*void)(*instance.write_file)) - cast(*void)(*instance)) == 48, "SDL_StorageInterface.write_file has unexpected offset % instead of 48", ((cast(*void)(*instance.write_file)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_StorageInterface.write_file)) == 8, "SDL_StorageInterface.write_file has unexpected size % instead of 8", size_of(type_of(SDL_StorageInterface.write_file)));
-        assert(((cast(*void)(*instance.mkdir)) - cast(*void)(*instance)) == 56, "SDL_StorageInterface.mkdir has unexpected offset % instead of 56", ((cast(*void)(*instance.mkdir)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_StorageInterface.mkdir)) == 8, "SDL_StorageInterface.mkdir has unexpected size % instead of 8", size_of(type_of(SDL_StorageInterface.mkdir)));
-        assert(((cast(*void)(*instance._remove)) - cast(*void)(*instance)) == 64, "SDL_StorageInterface._remove has unexpected offset % instead of 64", ((cast(*void)(*instance._remove)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_StorageInterface._remove)) == 8, "SDL_StorageInterface._remove has unexpected size % instead of 8", size_of(type_of(SDL_StorageInterface._remove)));
-        assert(((cast(*void)(*instance.rename)) - cast(*void)(*instance)) == 72, "SDL_StorageInterface.rename has unexpected offset % instead of 72", ((cast(*void)(*instance.rename)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_StorageInterface.rename)) == 8, "SDL_StorageInterface.rename has unexpected size % instead of 8", size_of(type_of(SDL_StorageInterface.rename)));
-        assert(((cast(*void)(*instance.copy)) - cast(*void)(*instance)) == 80, "SDL_StorageInterface.copy has unexpected offset % instead of 80", ((cast(*void)(*instance.copy)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_StorageInterface.copy)) == 8, "SDL_StorageInterface.copy has unexpected size % instead of 8", size_of(type_of(SDL_StorageInterface.copy)));
-        assert(((cast(*void)(*instance.space_remaining)) - cast(*void)(*instance)) == 88, "SDL_StorageInterface.space_remaining has unexpected offset % instead of 88", ((cast(*void)(*instance.space_remaining)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_StorageInterface.space_remaining)) == 8, "SDL_StorageInterface.space_remaining has unexpected size % instead of 8", size_of(type_of(SDL_StorageInterface.space_remaining)));
+        info := type_info(SDL_StorageInterface);
+        for info.members {
+            if it.name == {
+                case "version";
+                    assert(it.offset_in_bytes == 0, "SDL_StorageInterface.version has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_StorageInterface.version has unexpected size % instead of 4", it.type.runtime_size);
+                case "close";
+                    assert(it.offset_in_bytes == 8, "SDL_StorageInterface.close has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_StorageInterface.close has unexpected size % instead of 8", it.type.runtime_size);
+                case "ready";
+                    assert(it.offset_in_bytes == 16, "SDL_StorageInterface.ready has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_StorageInterface.ready has unexpected size % instead of 8", it.type.runtime_size);
+                case "enumerate";
+                    assert(it.offset_in_bytes == 24, "SDL_StorageInterface.enumerate has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_StorageInterface.enumerate has unexpected size % instead of 8", it.type.runtime_size);
+                case "info";
+                    assert(it.offset_in_bytes == 32, "SDL_StorageInterface.info has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_StorageInterface.info has unexpected size % instead of 8", it.type.runtime_size);
+                case "read_file";
+                    assert(it.offset_in_bytes == 40, "SDL_StorageInterface.read_file has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_StorageInterface.read_file has unexpected size % instead of 8", it.type.runtime_size);
+                case "write_file";
+                    assert(it.offset_in_bytes == 48, "SDL_StorageInterface.write_file has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_StorageInterface.write_file has unexpected size % instead of 8", it.type.runtime_size);
+                case "mkdir";
+                    assert(it.offset_in_bytes == 56, "SDL_StorageInterface.mkdir has unexpected offset % instead of 56", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_StorageInterface.mkdir has unexpected size % instead of 8", it.type.runtime_size);
+                case "_remove";
+                    assert(it.offset_in_bytes == 64, "SDL_StorageInterface._remove has unexpected offset % instead of 64", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_StorageInterface._remove has unexpected size % instead of 8", it.type.runtime_size);
+                case "rename";
+                    assert(it.offset_in_bytes == 72, "SDL_StorageInterface.rename has unexpected offset % instead of 72", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_StorageInterface.rename has unexpected size % instead of 8", it.type.runtime_size);
+                case "copy";
+                    assert(it.offset_in_bytes == 80, "SDL_StorageInterface.copy has unexpected offset % instead of 80", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_StorageInterface.copy has unexpected size % instead of 8", it.type.runtime_size);
+                case "space_remaining";
+                    assert(it.offset_in_bytes == 88, "SDL_StorageInterface.space_remaining has unexpected offset % instead of 88", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_StorageInterface.space_remaining has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_StorageInterface) == 96, "SDL_StorageInterface has size % instead of 96", size_of(SDL_StorageInterface));
     }
 
     {
-        instance: SDL_DateTime;
-        assert(((cast(*void)(*instance.year)) - cast(*void)(*instance)) == 0, "SDL_DateTime.year has unexpected offset % instead of 0", ((cast(*void)(*instance.year)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DateTime.year)) == 4, "SDL_DateTime.year has unexpected size % instead of 4", size_of(type_of(SDL_DateTime.year)));
-        assert(((cast(*void)(*instance.month)) - cast(*void)(*instance)) == 4, "SDL_DateTime.month has unexpected offset % instead of 4", ((cast(*void)(*instance.month)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DateTime.month)) == 4, "SDL_DateTime.month has unexpected size % instead of 4", size_of(type_of(SDL_DateTime.month)));
-        assert(((cast(*void)(*instance.day)) - cast(*void)(*instance)) == 8, "SDL_DateTime.day has unexpected offset % instead of 8", ((cast(*void)(*instance.day)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DateTime.day)) == 4, "SDL_DateTime.day has unexpected size % instead of 4", size_of(type_of(SDL_DateTime.day)));
-        assert(((cast(*void)(*instance.hour)) - cast(*void)(*instance)) == 12, "SDL_DateTime.hour has unexpected offset % instead of 12", ((cast(*void)(*instance.hour)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DateTime.hour)) == 4, "SDL_DateTime.hour has unexpected size % instead of 4", size_of(type_of(SDL_DateTime.hour)));
-        assert(((cast(*void)(*instance.minute)) - cast(*void)(*instance)) == 16, "SDL_DateTime.minute has unexpected offset % instead of 16", ((cast(*void)(*instance.minute)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DateTime.minute)) == 4, "SDL_DateTime.minute has unexpected size % instead of 4", size_of(type_of(SDL_DateTime.minute)));
-        assert(((cast(*void)(*instance.second)) - cast(*void)(*instance)) == 20, "SDL_DateTime.second has unexpected offset % instead of 20", ((cast(*void)(*instance.second)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DateTime.second)) == 4, "SDL_DateTime.second has unexpected size % instead of 4", size_of(type_of(SDL_DateTime.second)));
-        assert(((cast(*void)(*instance.nanosecond)) - cast(*void)(*instance)) == 24, "SDL_DateTime.nanosecond has unexpected offset % instead of 24", ((cast(*void)(*instance.nanosecond)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DateTime.nanosecond)) == 4, "SDL_DateTime.nanosecond has unexpected size % instead of 4", size_of(type_of(SDL_DateTime.nanosecond)));
-        assert(((cast(*void)(*instance.day_of_week)) - cast(*void)(*instance)) == 28, "SDL_DateTime.day_of_week has unexpected offset % instead of 28", ((cast(*void)(*instance.day_of_week)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DateTime.day_of_week)) == 4, "SDL_DateTime.day_of_week has unexpected size % instead of 4", size_of(type_of(SDL_DateTime.day_of_week)));
-        assert(((cast(*void)(*instance.utc_offset)) - cast(*void)(*instance)) == 32, "SDL_DateTime.utc_offset has unexpected offset % instead of 32", ((cast(*void)(*instance.utc_offset)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_DateTime.utc_offset)) == 4, "SDL_DateTime.utc_offset has unexpected size % instead of 4", size_of(type_of(SDL_DateTime.utc_offset)));
+        info := type_info(SDL_DateTime);
+        for info.members {
+            if it.name == {
+                case "year";
+                    assert(it.offset_in_bytes == 0, "SDL_DateTime.year has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DateTime.year has unexpected size % instead of 4", it.type.runtime_size);
+                case "month";
+                    assert(it.offset_in_bytes == 4, "SDL_DateTime.month has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DateTime.month has unexpected size % instead of 4", it.type.runtime_size);
+                case "day";
+                    assert(it.offset_in_bytes == 8, "SDL_DateTime.day has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DateTime.day has unexpected size % instead of 4", it.type.runtime_size);
+                case "hour";
+                    assert(it.offset_in_bytes == 12, "SDL_DateTime.hour has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DateTime.hour has unexpected size % instead of 4", it.type.runtime_size);
+                case "minute";
+                    assert(it.offset_in_bytes == 16, "SDL_DateTime.minute has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DateTime.minute has unexpected size % instead of 4", it.type.runtime_size);
+                case "second";
+                    assert(it.offset_in_bytes == 20, "SDL_DateTime.second has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DateTime.second has unexpected size % instead of 4", it.type.runtime_size);
+                case "nanosecond";
+                    assert(it.offset_in_bytes == 24, "SDL_DateTime.nanosecond has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DateTime.nanosecond has unexpected size % instead of 4", it.type.runtime_size);
+                case "day_of_week";
+                    assert(it.offset_in_bytes == 28, "SDL_DateTime.day_of_week has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DateTime.day_of_week has unexpected size % instead of 4", it.type.runtime_size);
+                case "utc_offset";
+                    assert(it.offset_in_bytes == 32, "SDL_DateTime.utc_offset has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_DateTime.utc_offset has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_DateTime) == 36, "SDL_DateTime has size % instead of 36", size_of(SDL_DateTime));
     }
 
     {
-        instance: SDL_ShaderCross_GraphicsShaderMetadata;
-        assert(((cast(*void)(*instance.num_samplers)) - cast(*void)(*instance)) == 0, "SDL_ShaderCross_GraphicsShaderMetadata.num_samplers has unexpected offset % instead of 0", ((cast(*void)(*instance.num_samplers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_GraphicsShaderMetadata.num_samplers)) == 4, "SDL_ShaderCross_GraphicsShaderMetadata.num_samplers has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_GraphicsShaderMetadata.num_samplers)));
-        assert(((cast(*void)(*instance.num_storage_textures)) - cast(*void)(*instance)) == 4, "SDL_ShaderCross_GraphicsShaderMetadata.num_storage_textures has unexpected offset % instead of 4", ((cast(*void)(*instance.num_storage_textures)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_GraphicsShaderMetadata.num_storage_textures)) == 4, "SDL_ShaderCross_GraphicsShaderMetadata.num_storage_textures has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_GraphicsShaderMetadata.num_storage_textures)));
-        assert(((cast(*void)(*instance.num_storage_buffers)) - cast(*void)(*instance)) == 8, "SDL_ShaderCross_GraphicsShaderMetadata.num_storage_buffers has unexpected offset % instead of 8", ((cast(*void)(*instance.num_storage_buffers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_GraphicsShaderMetadata.num_storage_buffers)) == 4, "SDL_ShaderCross_GraphicsShaderMetadata.num_storage_buffers has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_GraphicsShaderMetadata.num_storage_buffers)));
-        assert(((cast(*void)(*instance.num_uniform_buffers)) - cast(*void)(*instance)) == 12, "SDL_ShaderCross_GraphicsShaderMetadata.num_uniform_buffers has unexpected offset % instead of 12", ((cast(*void)(*instance.num_uniform_buffers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_GraphicsShaderMetadata.num_uniform_buffers)) == 4, "SDL_ShaderCross_GraphicsShaderMetadata.num_uniform_buffers has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_GraphicsShaderMetadata.num_uniform_buffers)));
-        assert(((cast(*void)(*instance.props)) - cast(*void)(*instance)) == 16, "SDL_ShaderCross_GraphicsShaderMetadata.props has unexpected offset % instead of 16", ((cast(*void)(*instance.props)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_GraphicsShaderMetadata.props)) == 4, "SDL_ShaderCross_GraphicsShaderMetadata.props has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_GraphicsShaderMetadata.props)));
+        info := type_info(SDL_ShaderCross_GraphicsShaderMetadata);
+        for info.members {
+            if it.name == {
+                case "num_samplers";
+                    assert(it.offset_in_bytes == 0, "SDL_ShaderCross_GraphicsShaderMetadata.num_samplers has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_GraphicsShaderMetadata.num_samplers has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_storage_textures";
+                    assert(it.offset_in_bytes == 4, "SDL_ShaderCross_GraphicsShaderMetadata.num_storage_textures has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_GraphicsShaderMetadata.num_storage_textures has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_storage_buffers";
+                    assert(it.offset_in_bytes == 8, "SDL_ShaderCross_GraphicsShaderMetadata.num_storage_buffers has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_GraphicsShaderMetadata.num_storage_buffers has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_uniform_buffers";
+                    assert(it.offset_in_bytes == 12, "SDL_ShaderCross_GraphicsShaderMetadata.num_uniform_buffers has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_GraphicsShaderMetadata.num_uniform_buffers has unexpected size % instead of 4", it.type.runtime_size);
+                case "props";
+                    assert(it.offset_in_bytes == 16, "SDL_ShaderCross_GraphicsShaderMetadata.props has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_GraphicsShaderMetadata.props has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_ShaderCross_GraphicsShaderMetadata) == 20, "SDL_ShaderCross_GraphicsShaderMetadata has size % instead of 20", size_of(SDL_ShaderCross_GraphicsShaderMetadata));
     }
 
     {
-        instance: SDL_ShaderCross_ComputePipelineMetadata;
-        assert(((cast(*void)(*instance.num_samplers)) - cast(*void)(*instance)) == 0, "SDL_ShaderCross_ComputePipelineMetadata.num_samplers has unexpected offset % instead of 0", ((cast(*void)(*instance.num_samplers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.num_samplers)) == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_samplers has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.num_samplers)));
-        assert(((cast(*void)(*instance.num_readonly_storage_textures)) - cast(*void)(*instance)) == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_readonly_storage_textures has unexpected offset % instead of 4", ((cast(*void)(*instance.num_readonly_storage_textures)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.num_readonly_storage_textures)) == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_readonly_storage_textures has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.num_readonly_storage_textures)));
-        assert(((cast(*void)(*instance.num_readonly_storage_buffers)) - cast(*void)(*instance)) == 8, "SDL_ShaderCross_ComputePipelineMetadata.num_readonly_storage_buffers has unexpected offset % instead of 8", ((cast(*void)(*instance.num_readonly_storage_buffers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.num_readonly_storage_buffers)) == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_readonly_storage_buffers has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.num_readonly_storage_buffers)));
-        assert(((cast(*void)(*instance.num_readwrite_storage_textures)) - cast(*void)(*instance)) == 12, "SDL_ShaderCross_ComputePipelineMetadata.num_readwrite_storage_textures has unexpected offset % instead of 12", ((cast(*void)(*instance.num_readwrite_storage_textures)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.num_readwrite_storage_textures)) == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_readwrite_storage_textures has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.num_readwrite_storage_textures)));
-        assert(((cast(*void)(*instance.num_readwrite_storage_buffers)) - cast(*void)(*instance)) == 16, "SDL_ShaderCross_ComputePipelineMetadata.num_readwrite_storage_buffers has unexpected offset % instead of 16", ((cast(*void)(*instance.num_readwrite_storage_buffers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.num_readwrite_storage_buffers)) == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_readwrite_storage_buffers has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.num_readwrite_storage_buffers)));
-        assert(((cast(*void)(*instance.num_uniform_buffers)) - cast(*void)(*instance)) == 20, "SDL_ShaderCross_ComputePipelineMetadata.num_uniform_buffers has unexpected offset % instead of 20", ((cast(*void)(*instance.num_uniform_buffers)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.num_uniform_buffers)) == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_uniform_buffers has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.num_uniform_buffers)));
-        assert(((cast(*void)(*instance.threadcount_x)) - cast(*void)(*instance)) == 24, "SDL_ShaderCross_ComputePipelineMetadata.threadcount_x has unexpected offset % instead of 24", ((cast(*void)(*instance.threadcount_x)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.threadcount_x)) == 4, "SDL_ShaderCross_ComputePipelineMetadata.threadcount_x has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.threadcount_x)));
-        assert(((cast(*void)(*instance.threadcount_y)) - cast(*void)(*instance)) == 28, "SDL_ShaderCross_ComputePipelineMetadata.threadcount_y has unexpected offset % instead of 28", ((cast(*void)(*instance.threadcount_y)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.threadcount_y)) == 4, "SDL_ShaderCross_ComputePipelineMetadata.threadcount_y has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.threadcount_y)));
-        assert(((cast(*void)(*instance.threadcount_z)) - cast(*void)(*instance)) == 32, "SDL_ShaderCross_ComputePipelineMetadata.threadcount_z has unexpected offset % instead of 32", ((cast(*void)(*instance.threadcount_z)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.threadcount_z)) == 4, "SDL_ShaderCross_ComputePipelineMetadata.threadcount_z has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.threadcount_z)));
-        assert(((cast(*void)(*instance.props)) - cast(*void)(*instance)) == 36, "SDL_ShaderCross_ComputePipelineMetadata.props has unexpected offset % instead of 36", ((cast(*void)(*instance.props)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.props)) == 4, "SDL_ShaderCross_ComputePipelineMetadata.props has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_ComputePipelineMetadata.props)));
+        info := type_info(SDL_ShaderCross_ComputePipelineMetadata);
+        for info.members {
+            if it.name == {
+                case "num_samplers";
+                    assert(it.offset_in_bytes == 0, "SDL_ShaderCross_ComputePipelineMetadata.num_samplers has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_samplers has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_readonly_storage_textures";
+                    assert(it.offset_in_bytes == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_readonly_storage_textures has unexpected offset % instead of 4", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_readonly_storage_textures has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_readonly_storage_buffers";
+                    assert(it.offset_in_bytes == 8, "SDL_ShaderCross_ComputePipelineMetadata.num_readonly_storage_buffers has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_readonly_storage_buffers has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_readwrite_storage_textures";
+                    assert(it.offset_in_bytes == 12, "SDL_ShaderCross_ComputePipelineMetadata.num_readwrite_storage_textures has unexpected offset % instead of 12", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_readwrite_storage_textures has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_readwrite_storage_buffers";
+                    assert(it.offset_in_bytes == 16, "SDL_ShaderCross_ComputePipelineMetadata.num_readwrite_storage_buffers has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_readwrite_storage_buffers has unexpected size % instead of 4", it.type.runtime_size);
+                case "num_uniform_buffers";
+                    assert(it.offset_in_bytes == 20, "SDL_ShaderCross_ComputePipelineMetadata.num_uniform_buffers has unexpected offset % instead of 20", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_ComputePipelineMetadata.num_uniform_buffers has unexpected size % instead of 4", it.type.runtime_size);
+                case "threadcount_x";
+                    assert(it.offset_in_bytes == 24, "SDL_ShaderCross_ComputePipelineMetadata.threadcount_x has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_ComputePipelineMetadata.threadcount_x has unexpected size % instead of 4", it.type.runtime_size);
+                case "threadcount_y";
+                    assert(it.offset_in_bytes == 28, "SDL_ShaderCross_ComputePipelineMetadata.threadcount_y has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_ComputePipelineMetadata.threadcount_y has unexpected size % instead of 4", it.type.runtime_size);
+                case "threadcount_z";
+                    assert(it.offset_in_bytes == 32, "SDL_ShaderCross_ComputePipelineMetadata.threadcount_z has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_ComputePipelineMetadata.threadcount_z has unexpected size % instead of 4", it.type.runtime_size);
+                case "props";
+                    assert(it.offset_in_bytes == 36, "SDL_ShaderCross_ComputePipelineMetadata.props has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_ComputePipelineMetadata.props has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_ShaderCross_ComputePipelineMetadata) == 40, "SDL_ShaderCross_ComputePipelineMetadata has size % instead of 40", size_of(SDL_ShaderCross_ComputePipelineMetadata));
     }
 
     {
-        instance: SDL_ShaderCross_SPIRV_Info;
-        assert(((cast(*void)(*instance.bytecode)) - cast(*void)(*instance)) == 0, "SDL_ShaderCross_SPIRV_Info.bytecode has unexpected offset % instead of 0", ((cast(*void)(*instance.bytecode)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_SPIRV_Info.bytecode)) == 8, "SDL_ShaderCross_SPIRV_Info.bytecode has unexpected size % instead of 8", size_of(type_of(SDL_ShaderCross_SPIRV_Info.bytecode)));
-        assert(((cast(*void)(*instance.bytecode_size)) - cast(*void)(*instance)) == 8, "SDL_ShaderCross_SPIRV_Info.bytecode_size has unexpected offset % instead of 8", ((cast(*void)(*instance.bytecode_size)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_SPIRV_Info.bytecode_size)) == 8, "SDL_ShaderCross_SPIRV_Info.bytecode_size has unexpected size % instead of 8", size_of(type_of(SDL_ShaderCross_SPIRV_Info.bytecode_size)));
-        assert(((cast(*void)(*instance.entrypoint)) - cast(*void)(*instance)) == 16, "SDL_ShaderCross_SPIRV_Info.entrypoint has unexpected offset % instead of 16", ((cast(*void)(*instance.entrypoint)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_SPIRV_Info.entrypoint)) == 8, "SDL_ShaderCross_SPIRV_Info.entrypoint has unexpected size % instead of 8", size_of(type_of(SDL_ShaderCross_SPIRV_Info.entrypoint)));
-        assert(((cast(*void)(*instance.shader_stage)) - cast(*void)(*instance)) == 24, "SDL_ShaderCross_SPIRV_Info.shader_stage has unexpected offset % instead of 24", ((cast(*void)(*instance.shader_stage)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_SPIRV_Info.shader_stage)) == 4, "SDL_ShaderCross_SPIRV_Info.shader_stage has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_SPIRV_Info.shader_stage)));
-        assert(((cast(*void)(*instance.enable_debug)) - cast(*void)(*instance)) == 28, "SDL_ShaderCross_SPIRV_Info.enable_debug has unexpected offset % instead of 28", ((cast(*void)(*instance.enable_debug)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_SPIRV_Info.enable_debug)) == 1, "SDL_ShaderCross_SPIRV_Info.enable_debug has unexpected size % instead of 1", size_of(type_of(SDL_ShaderCross_SPIRV_Info.enable_debug)));
-        assert(((cast(*void)(*instance.name)) - cast(*void)(*instance)) == 32, "SDL_ShaderCross_SPIRV_Info.name has unexpected offset % instead of 32", ((cast(*void)(*instance.name)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_SPIRV_Info.name)) == 8, "SDL_ShaderCross_SPIRV_Info.name has unexpected size % instead of 8", size_of(type_of(SDL_ShaderCross_SPIRV_Info.name)));
-        assert(((cast(*void)(*instance.props)) - cast(*void)(*instance)) == 40, "SDL_ShaderCross_SPIRV_Info.props has unexpected offset % instead of 40", ((cast(*void)(*instance.props)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_SPIRV_Info.props)) == 4, "SDL_ShaderCross_SPIRV_Info.props has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_SPIRV_Info.props)));
+        info := type_info(SDL_ShaderCross_SPIRV_Info);
+        for info.members {
+            if it.name == {
+                case "bytecode";
+                    assert(it.offset_in_bytes == 0, "SDL_ShaderCross_SPIRV_Info.bytecode has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ShaderCross_SPIRV_Info.bytecode has unexpected size % instead of 8", it.type.runtime_size);
+                case "bytecode_size";
+                    assert(it.offset_in_bytes == 8, "SDL_ShaderCross_SPIRV_Info.bytecode_size has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ShaderCross_SPIRV_Info.bytecode_size has unexpected size % instead of 8", it.type.runtime_size);
+                case "entrypoint";
+                    assert(it.offset_in_bytes == 16, "SDL_ShaderCross_SPIRV_Info.entrypoint has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ShaderCross_SPIRV_Info.entrypoint has unexpected size % instead of 8", it.type.runtime_size);
+                case "shader_stage";
+                    assert(it.offset_in_bytes == 24, "SDL_ShaderCross_SPIRV_Info.shader_stage has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_SPIRV_Info.shader_stage has unexpected size % instead of 4", it.type.runtime_size);
+                case "enable_debug";
+                    assert(it.offset_in_bytes == 28, "SDL_ShaderCross_SPIRV_Info.enable_debug has unexpected offset % instead of 28", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_ShaderCross_SPIRV_Info.enable_debug has unexpected size % instead of 1", it.type.runtime_size);
+                case "name";
+                    assert(it.offset_in_bytes == 32, "SDL_ShaderCross_SPIRV_Info.name has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ShaderCross_SPIRV_Info.name has unexpected size % instead of 8", it.type.runtime_size);
+                case "props";
+                    assert(it.offset_in_bytes == 40, "SDL_ShaderCross_SPIRV_Info.props has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_SPIRV_Info.props has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_ShaderCross_SPIRV_Info) == 48, "SDL_ShaderCross_SPIRV_Info has size % instead of 48", size_of(SDL_ShaderCross_SPIRV_Info));
     }
 
     {
-        instance: SDL_ShaderCross_HLSL_Define;
-        assert(((cast(*void)(*instance.name)) - cast(*void)(*instance)) == 0, "SDL_ShaderCross_HLSL_Define.name has unexpected offset % instead of 0", ((cast(*void)(*instance.name)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_HLSL_Define.name)) == 8, "SDL_ShaderCross_HLSL_Define.name has unexpected size % instead of 8", size_of(type_of(SDL_ShaderCross_HLSL_Define.name)));
-        assert(((cast(*void)(*instance.value)) - cast(*void)(*instance)) == 8, "SDL_ShaderCross_HLSL_Define.value has unexpected offset % instead of 8", ((cast(*void)(*instance.value)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_HLSL_Define.value)) == 8, "SDL_ShaderCross_HLSL_Define.value has unexpected size % instead of 8", size_of(type_of(SDL_ShaderCross_HLSL_Define.value)));
+        info := type_info(SDL_ShaderCross_HLSL_Define);
+        for info.members {
+            if it.name == {
+                case "name";
+                    assert(it.offset_in_bytes == 0, "SDL_ShaderCross_HLSL_Define.name has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ShaderCross_HLSL_Define.name has unexpected size % instead of 8", it.type.runtime_size);
+                case "value";
+                    assert(it.offset_in_bytes == 8, "SDL_ShaderCross_HLSL_Define.value has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ShaderCross_HLSL_Define.value has unexpected size % instead of 8", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_ShaderCross_HLSL_Define) == 16, "SDL_ShaderCross_HLSL_Define has size % instead of 16", size_of(SDL_ShaderCross_HLSL_Define));
     }
 
     {
-        instance: SDL_ShaderCross_HLSL_Info;
-        assert(((cast(*void)(*instance.source)) - cast(*void)(*instance)) == 0, "SDL_ShaderCross_HLSL_Info.source has unexpected offset % instead of 0", ((cast(*void)(*instance.source)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_HLSL_Info.source)) == 8, "SDL_ShaderCross_HLSL_Info.source has unexpected size % instead of 8", size_of(type_of(SDL_ShaderCross_HLSL_Info.source)));
-        assert(((cast(*void)(*instance.entrypoint)) - cast(*void)(*instance)) == 8, "SDL_ShaderCross_HLSL_Info.entrypoint has unexpected offset % instead of 8", ((cast(*void)(*instance.entrypoint)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_HLSL_Info.entrypoint)) == 8, "SDL_ShaderCross_HLSL_Info.entrypoint has unexpected size % instead of 8", size_of(type_of(SDL_ShaderCross_HLSL_Info.entrypoint)));
-        assert(((cast(*void)(*instance.include_dir)) - cast(*void)(*instance)) == 16, "SDL_ShaderCross_HLSL_Info.include_dir has unexpected offset % instead of 16", ((cast(*void)(*instance.include_dir)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_HLSL_Info.include_dir)) == 8, "SDL_ShaderCross_HLSL_Info.include_dir has unexpected size % instead of 8", size_of(type_of(SDL_ShaderCross_HLSL_Info.include_dir)));
-        assert(((cast(*void)(*instance.defines)) - cast(*void)(*instance)) == 24, "SDL_ShaderCross_HLSL_Info.defines has unexpected offset % instead of 24", ((cast(*void)(*instance.defines)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_HLSL_Info.defines)) == 8, "SDL_ShaderCross_HLSL_Info.defines has unexpected size % instead of 8", size_of(type_of(SDL_ShaderCross_HLSL_Info.defines)));
-        assert(((cast(*void)(*instance.shader_stage)) - cast(*void)(*instance)) == 32, "SDL_ShaderCross_HLSL_Info.shader_stage has unexpected offset % instead of 32", ((cast(*void)(*instance.shader_stage)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_HLSL_Info.shader_stage)) == 4, "SDL_ShaderCross_HLSL_Info.shader_stage has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_HLSL_Info.shader_stage)));
-        assert(((cast(*void)(*instance.enable_debug)) - cast(*void)(*instance)) == 36, "SDL_ShaderCross_HLSL_Info.enable_debug has unexpected offset % instead of 36", ((cast(*void)(*instance.enable_debug)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_HLSL_Info.enable_debug)) == 1, "SDL_ShaderCross_HLSL_Info.enable_debug has unexpected size % instead of 1", size_of(type_of(SDL_ShaderCross_HLSL_Info.enable_debug)));
-        assert(((cast(*void)(*instance.name)) - cast(*void)(*instance)) == 40, "SDL_ShaderCross_HLSL_Info.name has unexpected offset % instead of 40", ((cast(*void)(*instance.name)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_HLSL_Info.name)) == 8, "SDL_ShaderCross_HLSL_Info.name has unexpected size % instead of 8", size_of(type_of(SDL_ShaderCross_HLSL_Info.name)));
-        assert(((cast(*void)(*instance.props)) - cast(*void)(*instance)) == 48, "SDL_ShaderCross_HLSL_Info.props has unexpected offset % instead of 48", ((cast(*void)(*instance.props)) - cast(*void)(*instance)));
-        assert(size_of(type_of(SDL_ShaderCross_HLSL_Info.props)) == 4, "SDL_ShaderCross_HLSL_Info.props has unexpected size % instead of 4", size_of(type_of(SDL_ShaderCross_HLSL_Info.props)));
+        info := type_info(SDL_ShaderCross_HLSL_Info);
+        for info.members {
+            if it.name == {
+                case "source";
+                    assert(it.offset_in_bytes == 0, "SDL_ShaderCross_HLSL_Info.source has unexpected offset % instead of 0", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ShaderCross_HLSL_Info.source has unexpected size % instead of 8", it.type.runtime_size);
+                case "entrypoint";
+                    assert(it.offset_in_bytes == 8, "SDL_ShaderCross_HLSL_Info.entrypoint has unexpected offset % instead of 8", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ShaderCross_HLSL_Info.entrypoint has unexpected size % instead of 8", it.type.runtime_size);
+                case "include_dir";
+                    assert(it.offset_in_bytes == 16, "SDL_ShaderCross_HLSL_Info.include_dir has unexpected offset % instead of 16", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ShaderCross_HLSL_Info.include_dir has unexpected size % instead of 8", it.type.runtime_size);
+                case "defines";
+                    assert(it.offset_in_bytes == 24, "SDL_ShaderCross_HLSL_Info.defines has unexpected offset % instead of 24", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ShaderCross_HLSL_Info.defines has unexpected size % instead of 8", it.type.runtime_size);
+                case "shader_stage";
+                    assert(it.offset_in_bytes == 32, "SDL_ShaderCross_HLSL_Info.shader_stage has unexpected offset % instead of 32", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_HLSL_Info.shader_stage has unexpected size % instead of 4", it.type.runtime_size);
+                case "enable_debug";
+                    assert(it.offset_in_bytes == 36, "SDL_ShaderCross_HLSL_Info.enable_debug has unexpected offset % instead of 36", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 1, "SDL_ShaderCross_HLSL_Info.enable_debug has unexpected size % instead of 1", it.type.runtime_size);
+                case "name";
+                    assert(it.offset_in_bytes == 40, "SDL_ShaderCross_HLSL_Info.name has unexpected offset % instead of 40", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 8, "SDL_ShaderCross_HLSL_Info.name has unexpected size % instead of 8", it.type.runtime_size);
+                case "props";
+                    assert(it.offset_in_bytes == 48, "SDL_ShaderCross_HLSL_Info.props has unexpected offset % instead of 48", it.offset_in_bytes);
+                    assert(it.type.runtime_size == 4, "SDL_ShaderCross_HLSL_Info.props has unexpected size % instead of 4", it.type.runtime_size);
+            }
+        }
         assert(size_of(SDL_ShaderCross_HLSL_Info) == 56, "SDL_ShaderCross_HLSL_Info has size % instead of 56", size_of(SDL_ShaderCross_HLSL_Info));
     }
 }

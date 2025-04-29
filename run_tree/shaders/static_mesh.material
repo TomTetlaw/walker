@@ -1,5 +1,0 @@
-
-void material_frag_main(inout Intermediates intermediates) {
-	intermediates.normal = unpack_normal(intermediates, normal_texture.Sample(normal_sampler, intermediates.tex_coord));
-	intermediates.colour *= diffuse_texture.Sample(diffuse_sampler, intermediates.tex_coord).rgb;
-}

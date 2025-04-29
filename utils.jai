@@ -1,52 +1,64 @@
 
 file_read_string :: (file: *File) -> string {
-    length: int;
+    length := 0;
     file_read(file, *length, size_of(int));
     data := talloc(length);
     file_read(file, data, length);
-    return .{length, data};
+    return push_string(.{length, data});
 }
 
-tcs :: (s: string) -> *u8 {
-    result := cast (*u8) arena_alloc(context.temp_arena, s.count + 1);
-    if result == null return stub_c_string.data;
+eat_until_whitespace :: (s: string) -> string, string {
+    cursor := s;
 
-    memcpy(result, s.data, s.count);
-    result[s.count] = 0;
-    return result;
+    while cursor {
+        if cursor[0] <= 10 break;
+        advance(*cursor, 1);
+    }
+
+    return .{s.count - cursor.count, s.data}, cursor;
+}
+
+enum_find_name :: ($T: Type, name: string) -> T, bool #modify {
+    type := cast(*Type_Info) T;
+    return type.type == .ENUM;
+} {
+    names := enum_names(T);
+    values := enum_values_as_enum(T);
+    for names if equal_nocase(it, name) return values[it_index], true;
+    return values[0], false;
 }
 
 get_sdl_error :: () -> string {
     return to_string(SDL_GetError());
 }
 
-copy_string_global :: (s: string) -> string {
-    if !global_string_arena {
-        global_string_arena = make_arena();
-    }
-
-    return push_string(global_string_arena, s);
+tcs :: (s: string) -> *u8 {
+    data := cast(*u8) talloc(s.count + 1);
+    copy(data, s.data, s.count);
+    data[s.count] = 0;
+    return data;
 }
 
-print_memberwise_compare_code :: ($T: Type) #compile_time  {
-    builder: String_Builder;
+copy :: (dest: *void, source: *void, size: int) {
+    memcpy(dest, source, size);
+}
 
-    info := type_info(T);
+zero :: (data: *void, size: int) {
+    memset(data, 0, size);
+}
 
-    if info.type != .STRUCT {
-        print("print_memberwise_compare_code: % is not a struct.\n", T);
-    }
+zero :: (data: *$T) {
+    memset(data, 0, size_of(T));
+}
 
-    struct_info := cast(*Type_Info_Struct) info;
-    for struct_info.members {
-        print_to_builder(*builder, "if a.%1 != b.%1 return false;\n", it.name);
-    }
+push_string :: (s: string) -> string {
+    data := arena_alloc(*string_arena, s.count);
+    if !data return "";
 
-    print(builder_to_string(*builder));
+    copy(data, s.data, s.count);
+    return .{s.count, data};
 }
 
 #scope_file
 
-global_string_arena: *Arena;
-
-stub_c_string :: u8.[0];
+string_arena: Arena;

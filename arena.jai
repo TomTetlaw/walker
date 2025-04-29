@@ -1,206 +1,149 @@
 
 Arena :: struct {
-    used: int;
-    committed: int;
-    reserved: int;
     base: *void;
 
-    next, prev: *Arena;
-    freed: bool;
+    reserved: int;
+    committed: int;
+    used: int;
 }
 
-#assert(size_of(Arena) < 4096);
-
-default_reserve_size :: 1024 * 1024 * 1024 * 64;
-default_commit_size :: 1024 * 4;
-
-make_arena :: ($L := #caller_location) -> *Arena {
-    arena := linked_list_pop(*arena_free_list);
-    if arena {
-        arena.freed = false;
-        arena.used = 0;
-        zero(arena.base, arena.committed);
-        return arena;
-    }
+arena_alloc :: (arena: *Arena, size: int, align := 0, $L := #caller_location) -> *void {
+    if !ensure_arena_initialized(arena) return null;
 
     page_size := get_page_size();
-
-    reserve := (default_reserve_size + page_size - 1) & ~(page_size - 1);
-
-    memory := virtual_reserve(reserve);
-    if !memory {
-        code, error := get_error_value_and_string();
-        reserved_tb := total_reserved_bytes / (1024.0 * 1024.0 * 1024.0 * 1024.0);
-        committed_gb := total_committed_bytes / (1024.0 * 1024.0 * 1024.0);
-        print("Failed to reserve memory (committed=%gb, reserved=%tb): % (%)\n",
-              committed_gb, reserved_tb, error, code);
-        return *stub_arena;
+    aligned_size := (size + page_size - 1) & ~(page_size - 1);
+    if arena.used + aligned_size >= arena.committed {
+        virtual_commit(arena.base + arena.committed, aligned_size);
+        arena.committed += aligned_size;
     }
 
-    virtual_commit(memory, page_size);
+    memory := arena.base + arena.used;
+    arena.used += size;
 
-    arena = cast (*Arena) memory;
-    arena.base = memory + page_size;
-    arena.reserved = reserve;
-    arena.used = 0;
+    zero(memory, size);
 
-    commit := (default_commit_size + page_size - 1) & ~(page_size - 1);
-    virtual_commit(arena.base, commit);
-    arena.committed = commit;
-
-    return arena;
+    return memory;
 }
 
-reset_arena :: (arena: *Arena) {
-    arena.used = 0;
-    zero(arena.base, arena.committed);
+push_struct :: (arena: *Arena, value: $T, $L := #caller_location) -> *T {
+    result := push_struct(arena, T, L);
+    copy(result, *value, size_of(T));
+    return result;
 }
 
-arena_push_mark :: (arena: *Arena) -> int {
+push_struct :: (arena: *Arena, $T: Type, $L := #caller_location) -> *T {
+    value := cast(*T) arena_alloc(arena, size_of(T), 0, L);
+    if !value {
+        stub :: T.{};
+        return *stub;
+    }
+
+    ini :: initializer_of(T);
+    #if ini ini(value);
+
+    return value;
+}
+
+push_view :: (arena: *Arena, $T: Type, count: int, $L := #caller_location) -> [] T {
+    data := cast(*T) arena_alloc(arena, size_of(T) * count, 0, L);
+    if !data {
+        return .[];
+    }
+
+    result := [] T.{count, data};
+
+    ini :: initializer_of(T);
+    #if ini for * result ini(it);
+
+    return result;
+}
+
+push_view :: (arena: *Arena, values: [] $T, $L := #caller_location) -> [] T {
+    result := push_view(arena, T, values.count, L);
+    memcpy(result.data, values.data, size_of(T) * values.count);
+    return result;
+}
+
+arena_push_mark :: (arena: Arena) -> int {
     return arena.used;
 }
 
 arena_pop_mark :: (arena: *Arena, mark: int) {
     arena.used = mark;
-    zero(arena.base + mark, arena.committed - mark);
+    zero(arena.base + arena.used, mark - arena.used);
 }
 
-make_scoped_arena :: () -> *Arena #expand {
-    arena := make_arena();
-
-    `defer free_arena(arena);
-
-    return arena;
+reset_arena :: (arena: *Arena) {
+    zero(arena.base, arena.committed);
+    arena.used = 0;
 }
 
-free_arena :: (arena: *Arena) {
-    if !arena return;
-
-    arena.freed = true;
-    linked_list_add(*arena_free_list, arena);
+make_arena_allocator :: (arena: *Arena) -> Allocator {
+    return .{arena_allocator_proc, arena};
 }
 
-arena_alloc :: (arena: *Arena, size: int, $L := #caller_location) -> *void {
-    if arena.freed return null;
-
-    page_size := get_page_size();
-
-    if arena.used + size >= arena.committed {
-        aligned_size := (size + page_size - 1) & ~(page_size - 1);
-        commit := max(default_commit_size, aligned_size);
-
-        if arena.committed + commit >= arena.reserved {
-            return null;
-        }
-
-        virtual_commit(arena.base + arena.committed, commit);
-        arena.committed += commit;
-    }
-
-    result := arena.base + arena.used;
-    zero(result, size);
-    arena.used += size;
-
-    return result;
-}
-
-push_value :: (arena: *Arena, value: $T) {
-    result := cast(*T) arena_alloc(arena, size_of(T));
-    if !result return;
-
-    memcpy(result, *value, size_of(T));
-}
-
-push_string :: (arena: *Arena, value: string) -> string {
-    result := cast(*u8) arena_alloc(arena, value.count);
-    if !result return "";
-
-    memcpy(result, value.data, value.count);
-
-    s: string;
-    s.data = result;
-    s.count = value.count;
-    return s;
-}
-
-push_struct :: (arena: *Arena, $T: Type, stub: *T) -> *T {
-    result := cast(*T) arena_alloc(arena, size_of(T));
-
-    if !result return stub;
+tview :: ($T: Type, count: int, $L := #caller_location) -> [] T {
+    data := talloc(size_of(T) * count);
+    result := [] T.{count, data};
 
     ini :: initializer_of(T);
-    #if ini ini(result);
+    #if ini for * result ini(it);
 
     return result;
 }
 
-push_struct :: (arena: *Arena, value: $T) -> *T {
-    stub :: T.{};
-    result := push_struct(arena, T, *stub);
-    if result != *stub {
-        memcpy(result, *value, size_of(T));
-    }
-
+tview :: (values: [] $T, $L := #caller_location) -> [] T {
+    result := tview(T, values.count, L);
+    memcpy(result.data, values.data, size_of(T) * values.count);
     return result;
 }
 
-push_structs :: (arena: *Arena, $T: Type, count: int) -> *T {
-    result := arena_alloc(arena, size_of(T) * count);
-    if !result return null;
-
-    ini :: initializer_of(T);
-    #if ini {
-        for 0..count-1 {
-            ini(result + it);
-        }
-    }
-
+tarray :: ($T: Type, reserve := 0) -> [..] T {
+    result: [..] T;
+    result.allocator = temp;
+    array_reserve(*result, reserve);
     return result;
-}
-
-push_view :: (arena: *Arena, $T: Type, count: int) -> [] T {
-    data := cast(*T) arena_alloc(arena, size_of(T) * count);
-    if !data {
-        return .[];
-    }
-
-    result: [] T;
-    result.data = data;
-    result.count = count;
-
-    ini :: initializer_of(T);
-    #if ini {
-        for * result ini(it);
-    }
-
-    return result;
-}
-
-push_view :: (arena: *Arena, values: [] $T) -> [] T {
-    view := push_view(arena, T, values.count);
-    memcpy(view.data, values.data, size_of(T) * values.count);
-    return view;
-}
-
-arena_to_view :: (arena: *Arena, $T: Type, mark := 0) -> [] T {
-    result: [] T;
-    result.data = arena.base + mark;
-    result.count = arena_count(arena, T, mark);
-    return result;
-}
-
-arena_count :: inline (arena: *Arena, $T: Type, mark := 0) -> int {
-    return (arena.used - mark) / size_of(T);
 }
 
 #scope_file
 
+arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s64,
+                         old_memory: *void, allocator_data: *void) -> *void {
+    arena := cast(*Arena) allocator_data;
+
+    if mode == {
+        case .RESIZE;
+        result := arena_alloc(arena, requested_size);
+        memcpy(result, old_memory, old_size);
+        return result;
+
+        case .ALLOCATE;
+        return arena_alloc(arena, requested_size);
+    }
+
+    return null;
+}
+
+ensure_arena_initialized :: (arena: *Arena) -> bool {
+    if arena.base return true;
+
+    arena_default_reserve :: 1024 * 1024 * 1024 * 16;
+    arena_default_commit :: 1024 * 4;
+
+    arena.base = virtual_reserve(arena_default_reserve);
+    if !arena.base return false;
+
+    virtual_commit(arena.base, arena_default_commit);
+
+    arena.reserved = arena_default_reserve;
+    arena.committed = arena_default_commit;
+    arena.used = 0;
+
+    return true;
+}
+
 total_reserved_bytes: int;
 total_committed_bytes: int;
-
-stub_arena :: Arena.{};
-
-arena_free_list: Linked_List(Arena);
 
 #if OS == .WINDOWS {
     virtual_reserve :: (size: int) -> *void {
@@ -212,10 +155,6 @@ arena_free_list: Linked_List(Arena);
     virtual_commit :: (memory: *void, size: int) {
         total_committed_bytes += size;
         VirtualAlloc(memory, xx size, MEM_COMMIT, PAGE_READWRITE);
-    }
-
-    virtual_set_guard :: (memory: *void, size: int) {
-        VirtualAlloc(memory, xx size, MEM_COMMIT, PAGE_GUARD);
     }
 
     get_page_size :: () -> int {
@@ -233,10 +172,6 @@ arena_free_list: Linked_List(Arena);
     virtual_commit :: (memory: *void, size: int) {
         total_committed_bytes += size;
         // Linux does this automatically when the memory is written
-    }
-
-    virtual_set_guard :: (memory: *void, size: int) {
-        mprotect(memory, xx size, PROT_NONE);
     }
 
     get_page_size :: () -> int {

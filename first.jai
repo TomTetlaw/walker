@@ -1,14 +1,14 @@
 
 build :: () {
     profiling :: false;
-    release :: true;
+    release :: false;
 
     workspace := compiler_create_workspace("Walker");
 
     imports: [..] string;
     array_add(*imports, "Basic", "String", "File", "sdl3", "stb_image",
         "Command_Line", "File_Utilities", "Hash", "File_Watcher", "System",
-        "Random", "Sort", "Print_Vars");
+        "Random", "Sort", "Print_Vars", "Math", "Text_File_Handler");
 
 #if OS == .WINDOWS array_add(*imports, "Windows");
     else #if OS == .LINUX array_add(*imports, "POSIX");
@@ -49,8 +49,6 @@ build :: () {
         add_build_string(tprint("#import \"%\";\n", it), workspace);
     }
 
-    add_build_string("using,except(Quaternion,rgba) Math :: #import \"Math\";\n", workspace);
-
     files := file_list("./");
     for files {
         if contains(it, "first.jai") continue;
@@ -60,7 +58,7 @@ build :: () {
     }
 
     generated_code := false;
-    entity_types: [..] *Type_Info_Struct;
+    hlsl_structs: [..] *Type_Info_Struct;
     while true {
         message := compiler_wait_for_message();
         for plugins if it.message it.message(it, message);
@@ -71,25 +69,19 @@ build :: () {
                 exp := it.expression;
                 t := exp.defined_type;
 
-                if is_subclass_of(t, "Entity") {
-                    array_add(*entity_types, t);
+                if array_find(t.notes, "hlsl_struct") {
+                    array_add(*hlsl_structs, t);
                 }
             }
         }
 
         if message.kind == .PHASE {
             phase := cast (*Message_Phase) message;
-
             if phase.phase == .TYPECHECKED_ALL_WE_CAN {
                 if !generated_code {
-                    cg: Code_Gen;
-                    cg.entity_types = entity_types;
-                    code := generate_code(cg);
-                    add_build_string(code, workspace);
+                    add_build_string(generate_hlsl_structs(hlsl_structs), workspace);
                     generated_code = true;
                 }
-
-                break;
             }
         }
 
@@ -104,37 +96,75 @@ build :: () {
     set_build_options_dc(.{do_output=false});
 }
 
-Code_Gen :: struct {
-    entity_types: [] *Type_Info_Struct;
+generate_hlsl_struct_members :: (type: *Type_Info_Struct, texture_index: *int) -> string {
+    builder: String_Builder;
+    padding_index := 0;
+
+    pad := !array_find(type.notes, "no_pad");
+
+    for type.members {
+        padding_type := "";
+
+        if array_find(it.notes, "texture") {
+            print_to_builder(*builder, "Texture2D %_texture: register(t%, space2);\n", it.name, texture_index.*);
+            print_to_builder(*builder, "SamplerState %_sampler: register(t%, space2);\n", it.name, texture_index.*);
+            texture_index.* += 1;
+        } else {
+            if it.type.type == .FLOAT {
+                print_to_builder(*builder, "float %", it.name);
+                padding_type = "float3";
+            } else if it.type.type == .STRUCT {
+                member_type := cast(*Type_Info_Struct) it.type;
+                if equal(member_type.name, "V2") {
+                    print_to_builder(*builder, "float2 %", it.name);
+                    padding_type = "float2";
+                } else if equal(member_type.name, "V3") {
+                    print_to_builder(*builder, "float3 %", it.name);
+                    padding_type = "float";
+                } else if equal(member_type.name, "V4") {
+                    print_to_builder(*builder, "float4 %", it.name);
+                } else if equal(member_type.name, "Mat4") {
+                    print_to_builder(*builder, "float4x4 %", it.name);
+                }
+            }
+
+            use_semantic, index := array_find(it.notes, "semantic");
+            if use_semantic {
+                if it.notes.count > index + 1 {
+                    semantic := it.notes[index + 1];
+                    print_to_builder(*builder, ": %", semantic);
+                }
+            }
+
+            append(*builder, ";\n");
+
+            if pad && padding_type {
+                print_to_builder(*builder, "% pad_%;\n", padding_type, padding_index);
+                padding_index += 1;
+            }
+        }
+    }
+
+    return builder_to_string(*builder);
 }
 
-generate_code :: (cg: Code_Gen) -> string {
+generate_hlsl_structs :: (structs: [..] *Type_Info_Struct) -> string {
+    texture_index := 0;
+
     builder: String_Builder;
-
-    for cg.entity_types {
-        print_to_builder(*builder, "_%1: Bucket_Array(%1);\n", it.name);
+    for structs {
+        print_to_builder(*builder, "%_generated :: #string HERE\n", it.name);
+        append(*builder, generate_hlsl_struct_members(it, *texture_index));
+        append(*builder, "HERE\n");
     }
 
-    append(*builder, "get_entity_array :: ($T: Type) -> *Bucket_Array(T) #expand {\n");
-    for cg.entity_types {
-        print_to_builder(*builder, "\t#if T == %1 return *_%1;\n", it.name);
+    append(*builder, "generated_hlsl_structs :: Generated_Shader_Struct.[\n");
+    for structs {
+        print_to_builder(*builder, ".{\"%1\", %1_generated},\n", it.name);
     }
-    append(*builder, "}\n");
+    append(*builder, "];\n");
 
-    append(*builder, "for_all_entities :: ($func: ($T: Type, array: *Bucket_Array(T), entity: *Entity)) {\n");
-    for cg.entity_types {
-        print_to_builder(*builder, "{ array := get_entity_array(%1); for * _%1 inline func(%1, array, it); }\n", it.name);
-    }
-    append(*builder, "}\n");
-
-    append(*builder, "build_entity_list :: (arena: *Arena) {\n");
-    for cg.entity_types {
-        print_to_builder(*builder, "\tfor * _%1 push_value(arena, it);\n", it.name);
-    }
-    append(*builder, "}\n");
-
-    result := builder_to_string(*builder);
-    return result;
+    return builder_to_string(*builder);
 }
 
 #run build();

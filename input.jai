@@ -1,9 +1,9 @@
 
-mouse_pressed :: (input: Frame_Input, button: Mouse_Button) -> bool, Vec2 {
+mouse_pressed :: (input: Frame_Input, button: Mouse_Button) -> bool, V2 {
     for input.clicks {
         if it.down && it.button == button return true, it.position;
     }
-    
+
     return false, .{};
 }
 
@@ -11,7 +11,7 @@ key_pressed :: (input: Frame_Input, code: Key_Code) -> bool {
     for input.keys {
         if it.down && it.code == code return true;
     }
-    
+
     return false;
 }
 
@@ -22,43 +22,43 @@ key_state :: (input: Frame_Input, code: Key_Code) -> float {
 
 input_process_events :: (events: [] SDL_Event) -> Frame_Input {
     result: Frame_Input;
-    
+
     keys := tarray(Key_Press);
     clicks := tarray(Mouse_Press);
-    
+
     for events {
         type := cast(SDL_EventType) it.type;
-        
+
         if type == {
             case .SDL_EVENT_KEY_DOWN;
             array_add(*keys, .{cast(Key_Code) it.key.scancode, true});
-            
+
             case .SDL_EVENT_KEY_UP;
             array_add(*keys, .{cast(Key_Code) it.key.scancode, false});
-            
+
             case .SDL_EVENT_MOUSE_BUTTON_DOWN;
             button := cast(Mouse_Button) it.button.button;
-            position := Vec2.{cast(float) it.button.x, cast(float) it.button.y};
+            position := V2.{cast(float) it.button.x, cast(float) it.button.y};
             array_add(*clicks, .{button, position, true});
-            
+
             case .SDL_EVENT_MOUSE_BUTTON_UP;
             button := cast(Mouse_Button) it.button.button;
-            position := Vec2.{cast(float) it.button.x, cast(float) it.button.y};
+            position := V2.{cast(float) it.button.x, cast(float) it.button.y};
             array_add(*clicks, .{button, position, false});
-            
+
             case .SDL_EVENT_MOUSE_MOTION;
-            result.mouse_position = Vec2.{xx it.motion.x, xx it.motion.y};
-            result.mouse_delta += Vec2.{xx it.motion.xrel, xx it.motion.yrel};
+            result.mouse_position = V2.{xx it.motion.x, xx it.motion.y};
+            result.mouse_delta += V2.{xx it.motion.xrel, xx it.motion.yrel};
         }
     }
-    
+
     result.keys = keys;
     result.clicks = clicks;
-    
+
     result.control = key_states[Key_Code.LCTRL] || key_states[Key_Code.RCTRL];
     result.alt = key_states[Key_Code.LALT] || key_states[Key_Code.RALT];
     result.shift = key_states[Key_Code.LSHIFT] || key_states[Key_Code.RSHIFT];
-    
+
     return result;
 }
 
@@ -79,7 +79,7 @@ Mouse_Button :: enum {
 
 Mouse_Press :: struct {
     button: Mouse_Button;
-    position: Vec2;
+    position: V2;
     down: bool;
 }
 
@@ -88,20 +88,20 @@ Frame_Input :: struct {
     keys: [] Key_Press;
     clicks: [] Mouse_Press;
     control, alt, shift: bool;
-    mouse_position: Vec2;
-    mouse_delta: Vec2;
+    mouse_position: V2;
+    mouse_delta: V2;
 }
 
 #scope_file
 
 key_states: *bool;
 
-#scope_export 
+#scope_export
 
 // copy+pasted from sdl
 Key_Code :: enum u32 {
     UNKNOWN              :: 0;
-    
+
     A                    :: 4;
     B                    :: 5;
     C                    :: 6;
@@ -128,7 +128,7 @@ Key_Code :: enum u32 {
     X                    :: 27;
     Y                    :: 28;
     Z                    :: 29;
-    
+
     _1                   :: 30;
     _2                   :: 31;
     _3                   :: 32;
@@ -139,31 +139,31 @@ Key_Code :: enum u32 {
     _8                   :: 37;
     _9                   :: 38;
     _0                   :: 39;
-    
+
     RETURN               :: 40;
     ESCAPE               :: 41;
     BACKSPACE            :: 42;
     TAB                  :: 43;
     SPACE                :: 44;
-    
+
     MINUS                :: 45;
     EQUALS               :: 46;
     LEFTBRACKET          :: 47;
     RIGHTBRACKET         :: 48;
     BACKSLASH            :: 49;
-    
+
     NONUSHASH            :: 50;
-    
+
     SEMICOLON            :: 51;
     APOSTROPHE           :: 52;
     GRAVE                :: 53;
-    
+
     COMMA                :: 54;
     PERIOD               :: 55;
     SLASH                :: 56;
-    
+
     CAPSLOCK             :: 57;
-    
+
     F1                   :: 58;
     F2                   :: 59;
     F3                   :: 60;
@@ -176,12 +176,12 @@ Key_Code :: enum u32 {
     F10                  :: 67;
     F11                  :: 68;
     F12                  :: 69;
-    
+
     PRINTSCREEN          :: 70;
     SCROLLLOCK           :: 71;
     PAUSE                :: 72;
     INSERT               :: 73;
-    
+
     HOME                 :: 74;
     PAGEUP               :: 75;
     DELETE               :: 76;
@@ -191,9 +191,9 @@ Key_Code :: enum u32 {
     LEFT                 :: 80;
     DOWN                 :: 81;
     UP                   :: 82;
-    
+
     NUMLOCKCLEAR         :: 83;
-    
+
     KP_DIVIDE            :: 84;
     KP_MULTIPLY          :: 85;
     KP_MINUS             :: 86;
@@ -210,12 +210,12 @@ Key_Code :: enum u32 {
     KP_9                 :: 97;
     KP_0                 :: 98;
     KP_PERIOD            :: 99;
-    
+
     NONUSBACKSLASH       :: 100;
-    
+
     APPLICATION          :: 101;
     POWER                :: 102;
-    
+
     KP_EQUALS            :: 103;
     F13                  :: 104;
     F14                  :: 105;
@@ -243,12 +243,12 @@ Key_Code :: enum u32 {
     MUTE                 :: 127;
     VOLUMEUP             :: 128;
     VOLUMEDOWN           :: 129;
-    
+
     KP_COMMA             :: 133;
     KP_EQUALSAS400       :: 134;
-    
+
     INTERNATIONAL1       :: 135;
-    
+
     INTERNATIONAL2       :: 136;
     INTERNATIONAL3       :: 137;
     INTERNATIONAL4       :: 138;
@@ -266,7 +266,7 @@ Key_Code :: enum u32 {
     LANG7                :: 150;
     LANG8                :: 151;
     LANG9                :: 152;
-    
+
     ALTERASE             :: 153;
     SYSREQ               :: 154;
     CANCEL               :: 155;
@@ -279,7 +279,7 @@ Key_Code :: enum u32 {
     CLEARAGAIN           :: 162;
     CRSEL                :: 163;
     EXSEL                :: 164;
-    
+
     KP_00                :: 176;
     KP_000               :: 177;
     THOUSANDSSEPARATOR   :: 178;
@@ -326,7 +326,7 @@ Key_Code :: enum u32 {
     KP_OCTAL             :: 219;
     KP_DECIMAL           :: 220;
     KP_HEXADECIMAL       :: 221;
-    
+
     LCTRL                :: 224;
     LSHIFT               :: 225;
     LALT                 :: 226;
@@ -335,15 +335,15 @@ Key_Code :: enum u32 {
     RSHIFT               :: 229;
     RALT                 :: 230;
     RGUI                 :: 231;
-    
+
     MODE                 :: 257;
-    
+
     SLEEP                :: 258;
     WAKE                 :: 259;
-    
+
     CHANNEL_INCREMENT    :: 260;
     CHANNEL_DECREMENT    :: 261;
-    
+
     MEDIA_PLAY           :: 262;
     MEDIA_PAUSE          :: 263;
     MEDIA_RECORD         :: 264;
@@ -355,7 +355,7 @@ Key_Code :: enum u32 {
     MEDIA_EJECT          :: 270;
     MEDIA_PLAY_PAUSE     :: 271;
     MEDIA_SELECT         :: 272;
-    
+
     AC_NEW               :: 273;
     AC_OPEN              :: 274;
     AC_CLOSE             :: 275;
@@ -363,7 +363,7 @@ Key_Code :: enum u32 {
     AC_SAVE              :: 277;
     AC_PRINT             :: 278;
     AC_PROPERTIES        :: 279;
-    
+
     AC_SEARCH            :: 280;
     AC_HOME              :: 281;
     AC_BACK              :: 282;
@@ -371,15 +371,15 @@ Key_Code :: enum u32 {
     AC_STOP              :: 284;
     AC_REFRESH           :: 285;
     AC_BOOKMARKS         :: 286;
-    
+
     SOFTLEFT             :: 287;
-    
+
     SOFTRIGHT            :: 288;
-    
+
     CALL                 :: 289;
     ENDCALL              :: 290;
-    
+
     RESERVED             :: 400;
-    
+
     COUNT                :: 512;
 }

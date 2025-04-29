@@ -1,221 +1,115 @@
 
-Vec2 :: struct {
+Any_Float_Vector :: struct {
+	x, y: float;
+}
+
+Any_Integer_Vector :: struct {
+	x, y: s32;
+}
+
+V2i :: struct {
+    x, y: s32;
+
+    #place x;
+    components: [COMPONENTS] s32;
+    COMPONENTS :: 2;
+}
+
+V3i :: struct {
+    x, y, z: s32;
+
+    #place x;
+    components: [COMPONENTS] s32;
+    COMPONENTS :: 3;
+}
+
+V4i :: struct {
+    x, y, z, w: s32;
+
+    #place x;
+    components: [COMPONENTS] s32;
+    COMPONENTS :: 4;
+}
+
+V2 :: struct {
     x, y: float;
+
+    #place x;
+    components: [COMPONENTS] float;
+    COMPONENTS :: 2;
 }
 
-Vec2i :: struct {
-    x, y: int;
-}
-
-Vec3 :: struct {
+V3 :: struct {
     x, y, z: float;
 
-#place x;
-    xy: Vec2;
-
-#place y;
-    yz: Vec2;
+    #place x;
+    components: [COMPONENTS] float;
+    COMPONENTS :: 3;
 }
 
-Vec4 :: struct {
+V4 :: struct {
     x, y, z, w: float;
 
-#place x;
-    xy: Vec2;
-
-#place y;
-    yz: Vec2;
-
-#place z;
-    zw: Vec2;
-
-#place x;
-    xyz: Vec3;
-
-#place y;
-    yzw: Vec3;
+    #place x;
+    components: [COMPONENTS] float;
+    COMPONENTS :: 4;
 }
 
-v2 :: (xy: float) -> Vec2 { return .{xy, xy}; }
-v3 :: (xyz: float) -> Vec3 { return .{xyz, xyz, xyz}; }
-v3 :: (xy: Vec2, z: float) -> Vec3 { return .{xy.x, xy.y, z}; }
-v3 :: (x: float, yz: Vec2) -> Vec3 { return .{x, yz.x, yz.y}; }
-v4 :: (x: float, y: float, z: float, w: float) -> Vec4 { return .{x, y, z, w}; }
-v4 :: (xyzw: float) -> Vec4 { return .{xyzw, xyzw, xyzw, xyzw}; }
-v4 :: (xy: Vec2, z: float, w: float) -> Vec4 { return .{xy.x, xy.y, z, w}; }
-v4 :: (xyz: Vec3, w: float) -> Vec4 { return .{xyz.x, xyz.y, xyz.z, w}; }
-
-v2 :: (v: Vec2i) -> Vec2 { return .{cast(float) v.x, cast(float) v.y}; }
-v2i :: (v: Vec2) -> Vec2i { return .{cast(int) v.x, cast(int) v.y}; }
-
-operator *[] :: (v: *Vec2, i: int) -> *float {
-    if i == 0 return *v.x;
-    else if i == 1 return *v.y;
-    else {
-        assert(false);
-        return null;
-    }
+is_vector_type :: (T: Type) -> bool #compile_time {
+	is_scalar_vector := T == V2 || T == V3 || T == V4;
+	is_integer_vector := T == V2i || T == V3i || T == V4i;
+	return is_scalar_vector || is_integer_vector;
 }
 
-operator *[] :: (v: *Vec3, i: int) -> *float {
-    if i == 0 return *v.x;
-    else if i == 1 return *v.y;
-    else if i == 2 return *v.z;
-    else {
-        assert(false);
-        return null;
-    }
+min_vector :: (a: $T, b: T) -> T #modify { return is_vector_type(T); } {
+	result: T;
+	for 0..T.COMPONENTS-1 {
+		result[it] = min(a.components[it], b.components[it]);
+	}
+	return result;
 }
 
-operator *[] :: (v: *Vec4, i: int) -> *float {
-    if i == 0 return *v.x;
-    else if i == 1 return *v.y;
-    else if i == 2 return *v.z;
-    else if i == 3 return *v.w;
-    else {
-        assert(false);
-        return null;
-    }
+max_vector :: (a: $T, b: T) -> T #modify { return is_vector_type(T); } {
+	result: T;
+	for 0..T.COMPONENTS-1 {
+		result[it] = max(a.components[it], b.components[it]);
+	}
+	return result;
 }
 
-operator + :: inline (a: Vec2i, b: Vec2i) -> Vec2i #symmetric { return .{a.x + b.x, a.y + b.y}; }
-operator + :: inline (a: Vec2, b: Vec2) -> Vec2 #symmetric { return .{a.x + b.x, a.y + b.y}; }
-operator + :: inline (a: Vec3, b: Vec3) -> Vec3 #symmetric { return .{a.x + b.x, a.y + b.y, a.z + b.z}; }
-operator + :: inline (a: Vec4, b: Vec4) -> Vec4 #symmetric { return .{a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w}; }
+length_squared :: inline (v: V2) -> float { return v.x*v.x + v.y*v.y; }
+length_squared :: inline (v: V3) -> float { return v.x*v.x + v.y*v.y + v.z*v.z; }
+length_squared :: inline (v: V4) -> float { return v.x*v.x + v.y*v.y + v.z*v.z + v.w*v.w; }
+length :: inline (v: V2) -> float { return sqrt(v.x*v.x + v.y*v.y); }
+length :: inline (v: V3) -> float { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
+length :: inline (v: V4) -> float { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z + v.w*v.w); }
 
-operator - :: inline (a: Vec2, b: Vec2) -> Vec2 #symmetric { return .{a.x - b.x, a.y - b.y}; }
-operator - :: inline (a: Vec3, b: Vec3) -> Vec3 #symmetric { return .{a.x - b.x, a.y - b.y, a.z - b.z}; }
-operator - :: inline (a: Vec4, b: Vec4) -> Vec4 #symmetric { return .{a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w}; }
-operator - :: inline (v: Vec2) -> Vec2 { return .{-v.x, -v.y}; }
-operator - :: inline (v: Vec3) -> Vec3 { return .{-v.x, -v.y, -v.z}; }
-operator - :: inline (v: Vec4) -> Vec4 { return .{-v.x, -v.y, -v.z, -v.w}; }
-
-operator * :: inline (a: Vec2, b: Vec2) -> Vec2 #symmetric { return .{a.x * b.x, a.y * b.y}; }
-operator * :: inline (a: Vec3, b: Vec3) -> Vec3 #symmetric { return .{a.x * b.x, a.y * b.y, a.z * b.z}; }
-operator * :: inline (a: Vec4, b: Vec4) -> Vec4 #symmetric { return .{a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w}; }
-operator * :: inline (a: Vec2, b: float) -> Vec2 #symmetric { return .{a.x * b, a.y * b}; }
-operator * :: inline (a: Vec3, b: float) -> Vec3 #symmetric { return .{a.x * b, a.y * b, a.z * b}; }
-operator * :: inline (a: Vec4, b: float) -> Vec4 #symmetric { return .{a.x * b, a.y * b, a.z * b, a.w * b}; }
-
-operator / :: inline (a: Vec2, b: Vec2) -> Vec2 #symmetric { return .{a.x / b.x, a.y / b.y}; }
-operator / :: inline (a: Vec3, b: Vec3) -> Vec3 #symmetric { return .{a.x / b.x, a.y / b.y, a.z / b.z}; }
-operator / :: inline (a: Vec4, b: Vec4) -> Vec4 #symmetric { return .{a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w}; }
-
-length_squared :: inline (v: Vec2) -> float { return v.x*v.x + v.y*v.y; }
-length_squared :: inline (v: Vec3) -> float { return v.x*v.x + v.y*v.y + v.z*v.z; }
-length_squared :: inline (v: Vec4) -> float { return v.x*v.x + v.y*v.y + v.z*v.z + v.w*v.w; }
-length :: inline (v: Vec2) -> float { return sqrt(v.x*v.x + v.y*v.y); }
-length :: inline (v: Vec3) -> float { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
-length :: inline (v: Vec4) -> float { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z + v.w*v.w); }
-
-normalize :: (v: Vec2, fallback := Vec2.{}) -> Vec2 {
+normalize :: (v: V2, fallback := V2.{}) -> V2 {
     len := length(v);
     if len == 0.0 return fallback;
     inv_length := 1.0 / len;
     return .{v.x * inv_length, v.y * inv_length};
 }
 
-normalize :: (v: Vec3, fallback := Vec3.{0, 0, 1}) -> Vec3 {
+normalize :: (v: V3, fallback := V3.{0, 0, 1}) -> V3 {
     len := length(v);
     if len == 0.0 return fallback;
     inv_length := 1.0 / len;
     return .{v.x * inv_length, v.y * inv_length, v.z * inv_length};
 }
 
-normalize :: (v: Vec4, fallback := Vec4.{}) -> Vec4 {
+normalize :: (v: V4, fallback := V4.{}) -> V4 {
     len := length(v);
     if len == 0.0 return fallback;
     inv_length := 1.0 / len;
     return .{v.x * inv_length, v.y * inv_length, v.z * inv_length, v.w * inv_length};
 }
 
-dot_product :: inline (a: Vec2, b: Vec2) -> float { return a.x*b.x + a.y*b.y; }
-dot_product :: inline (a: Vec3, b: Vec3) -> float { return a.x*b.x + a.y*b.y + a.z*b.z; }
-dot_product :: inline (a: Vec4, b: Vec4) -> float { return a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w; }
+dot :: inline (a: V2, b: V2) -> float { return a.x*b.x + a.y*b.y; }
+dot :: inline (a: V3, b: V3) -> float { return a.x*b.x + a.y*b.y + a.z*b.z; }
+dot :: inline (a: V4, b: V4) -> float { return a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w; }
 
-distance_squared :: inline (a: Vec2, b: Vec2) -> float { return length_squared(a - b); }
-distance_squared :: inline (a: Vec3, b: Vec3) -> float { return length_squared(a - b); }
-distance_squared :: inline (a: Vec4, b: Vec4) -> float { return length_squared(a - b); }
-distance :: inline (a: Vec2, b: Vec2) -> float { return length(a - b); }
-distance :: inline (a: Vec3, b: Vec3) -> float { return length(a - b); }
-distance :: inline (a: Vec4, b: Vec4) -> float { return length(a - b); }
-
-lerp :: inline (a: Vec2, b: Vec2, t: float) -> Vec2 { return a + ((b - a) * t); }
-lerp :: inline (a: Vec3, b: Vec3, t: float) -> Vec3 { return a + ((b - a) * t); }
-lerp :: inline (a: Vec4, b: Vec4, t: float) -> Vec4 { return a + ((b - a) * t); }
-
-clamp :: inline (v: Vec2, min: Vec2, max: Vec2) -> Vec2 {
-    return .{
-        clamp(v.x, min.x, max.x),
-        clamp(v.y, min.y, max.y)};
-}
-
-clamp :: inline (v: Vec3, min: Vec3, max: Vec3) -> Vec3 {
-    return .{
-        clamp(v.x, min.x, max.x),
-        clamp(v.y, min.y, max.y),
-        clamp(v.z, min.z, max.z)
-    };
-}
-
-clamp :: inline (v: Vec4, min: Vec4, max: Vec4) -> Vec4 {
-    return .{
-        clamp(v.x, min.x, max.x),
-        clamp(v.y, min.y, max.y),
-        clamp(v.z, min.z, max.z),
-        clamp(v.w, min.w, max.w)
-    };
-}
-
-min :: inline (a: Vec2, b: Vec2) -> Vec2 {
-    return .{
-        min(a.x, b.x),
-        min(a.y, b.y)
-    };
-}
-
-min :: inline (a: Vec3, b: Vec3) -> Vec3 {
-    return .{
-        min(a.x, b.x),
-        min(a.y, b.y),
-        min(a.z, b.z)
-    };
-}
-
-min :: inline (a: Vec4, b: Vec4) -> Vec4 {
-    return .{
-        min(a.x, b.x),
-        min(a.y, b.y),
-        min(a.z, b.z),
-        min(a.w, b.w)
-    };
-}
-
-max :: inline (a: Vec2, b: Vec2) -> Vec2 {
-    return .{
-        max(a.x, b.x),
-        max(a.y, b.y)
-    };
-}
-
-max :: inline (a: Vec3, b: Vec3) -> Vec3 {
-    return .{
-        max(a.x, b.x),
-        max(a.y, b.y),
-        max(a.z, b.z)
-    };
-}
-
-max :: inline (a: Vec4, b: Vec4) -> Vec4 {
-    return .{
-        max(a.x, b.x),
-        max(a.y, b.y),
-        max(a.z, b.z),
-        max(a.w, b.w)
-    };
-}
-
-cross_product :: inline (a: Vec3, b: Vec3) -> Vec3 {
+cross :: inline (a: V3, b: V3) -> V3 {
     return .{
         a.y * b.z - a.z * b.y,
         a.z * b.x - a.x * b.z,
@@ -223,91 +117,445 @@ cross_product :: inline (a: Vec3, b: Vec3) -> Vec3 {
     };
 }
 
-angle_between :: (a: Vec2, b: Vec2) -> float {
-    length_a := length(a);
-    if length_a == 0.0 return 0.0;
+v2i :: inline (xy: s32) -> V2i { return .{xy, xy}; }
+v3i :: inline (x: s32, y: s32, z: s32) -> V3i { return .{x, y, z}; }
+v3i :: inline (xy: V2i, z: s32) -> V3i { return .{xy.x, xy.y, z}; }
+v3i :: inline (x: s32, yz: V2i) -> V3i { return .{x, yz.x, yz.y}; }
+v3i :: inline (xyz: s32) -> V3i { return .{xyz, xyz, xyz}; }
+v4i :: inline (x: s32, y: s32, z: s32, w: s32) -> V4i { return .{x, y, z, w}; }
+v4i :: inline (xy: V2i, z: s32, w: s32) -> V4i { return .{xy.x, xy.y, z, w}; }
+v4i :: inline (x: s32, yz: V2i, w: s32) -> V4i { return .{x, yz.x, yz.y, w}; }
+v4i :: inline (x: s32, y: s32, zw: V2i) -> V4i { return .{x, y, zw.x, zw.y}; }
+v4i :: inline (xy: V2i, zw: V2i) -> V4i { return .{xy.x, xy.y, zw.x, zw.y}; }
+v4i :: inline (x: s32, yzw: V3i) -> V4i { return .{x, yzw.x, yzw.y, yzw.z}; }
+v4i :: inline (xyz: V3i, w: s32) -> V4i { return .{xyz.x, xyz.y, xyz.z, w}; }
+v4i :: inline (xyzw: s32) -> V4i { return .{xyzw, xyzw, xyzw, xyzw}; }
 
-    length_b := length(b);
-    if length_b == 0.0 return 0.0;
+v2 :: inline (xy: float) -> V2 { return .{xy, xy}; }
+v3 :: inline (x: float, y: float, z: float) -> V3 { return .{x, y, z}; }
+v3 :: inline (xy: V2, z: float) -> V3 { return .{xy.x, xy.y, z}; }
+v3 :: inline (x: float, yz: V2) -> V3 { return .{x, yz.x, yz.y}; }
+v3 :: inline (xyz: float) -> V3 { return .{xyz, xyz, xyz}; }
+v4 :: inline (x: float, y: float, z: float, w: float) -> V4 { return .{x, y, z, w}; }
+v4 :: inline (xy: V2, z: float, w: float) -> V4 { return .{xy.x, xy.y, z, w}; }
+v4 :: inline (x: float, yz: V2, w: float) -> V4 { return .{x, yz.x, yz.y, w}; }
+v4 :: inline (x: float, y: float, zw: V2) -> V4 { return .{x, y, zw.x, zw.y}; }
+v4 :: inline (xy: V2, zw: V2) -> V4 { return .{xy.x, xy.y, zw.x, zw.y}; }
+v4 :: inline (x: float, yzw: V3) -> V4 { return .{x, yzw.x, yzw.y, yzw.z}; }
+v4 :: inline (xyz: V3, w: float) -> V4 { return .{xyz.x, xyz.y, xyz.z, w}; }
+v4 :: inline (xyzw: float) -> V4 { return .{xyzw, xyzw, xyzw, xyzw}; }
 
-    return acos(dot_product(a, b) / (length_a * length_b)) * rad2turn;
+v2i :: inline (v: V2) -> V2i { return .{cast(s32) v.x, cast(s32) v.y}; }
+v2 :: inline (v: V2i) -> V2 { return .{cast(float) v.x, cast(float) v.y}; }
+v3i :: inline (v: V3) -> V3i { return .{cast(s32) v.x, cast(s32) v.y, cast(s32) v.z}; }
+v3 :: inline (v: V3i) -> V3 { return .{cast(float) v.x, cast(float) v.y, cast(float) v.z}; }
+v4i :: inline (v: V4) -> V4i { return .{cast(s32) v.x, cast(s32) v.y, cast(s32) v.z, cast(s32) v.w}; }
+v4 :: inline (v: V4i) -> V4 { return .{cast(float) v.x, cast(float) v.y, cast(float) v.z, cast(float) v.w}; }
+
+operator + :: inline (a: V2i, b: V2i) -> V2i #symmetric {
+	result: V2i;
+	result.x = a.x + b.x;
+	result.y = a.y + b.y;
+	return result;
 }
 
-floor :: (v: Vec2) -> Vec2 {
-    return .{floor(v.x), floor(v.y)};
+operator - :: inline (a: V2i, b: V2i) -> V2i #symmetric {
+	result: V2i;
+	result.x = a.x - b.x;
+	result.y = a.y - b.y;
+	return result;
 }
 
-floor :: (v: Vec3) -> Vec3 {
-    return .{floor(v.x), floor(v.y), floor(v.z)};
+operator * :: inline (a: V2i, b: V2i) -> V2i #symmetric {
+	result: V2i;
+	result.x = a.x * b.x;
+	result.y = a.y * b.y;
+	return result;
 }
 
-floor :: (v: Vec4) -> Vec4 {
-    return .{floor(v.x), floor(v.y), floor(v.z), floor(v.w)};
+operator / :: inline (a: V2i, b: V2i) -> V2i #symmetric {
+	result: V2i;
+	result.x = a.x / b.x;
+	result.y = a.y / b.y;
+	return result;
 }
 
-frac :: (v: Vec2) -> Vec2 {
-    return .{frac(v.x), frac(v.y)};
+operator + :: inline (a: V2i, b: s32) -> V2i #symmetric {
+	result: V2i;
+	result.x = a.x + b;
+	result.y = a.y + b;
+	return result;
 }
 
-frac :: (v: Vec3) -> Vec3 {
-    return .{frac(v.x), frac(v.y), frac(v.z)};
+operator - :: inline (a: V2i, b: s32) -> V2i #symmetric {
+	result: V2i;
+	result.x = a.x - b;
+	result.y = a.y - b;
+	return result;
 }
 
-frac :: (v: Vec4) -> Vec4 {
-    return .{frac(v.x), frac(v.y), frac(v.z), frac(v.w)};
+operator * :: inline (a: V2i, b: s32) -> V2i #symmetric {
+	result: V2i;
+	result.x = a.x * b;
+	result.y = a.y * b;
+	return result;
 }
 
-random_unit_vec2 :: () -> Vec2 {
-    x := random_01() * 2 - 1;
-    y := random_01() * 2 - 1;
-    return normalize(Vec2.{x, y});
+operator / :: inline (a: V2i, b: s32) -> V2i #symmetric {
+	result: V2i;
+	result.x = a.x / b;
+	result.y = a.y / b;
+	return result;
 }
 
-random_unit_vec3 :: () -> Vec3 {
-    x := random_01() * 2 - 1;
-    y := random_01() * 2 - 1;
-    z := random_01() * 2 - 1;
-    return normalize(Vec3.{x, y, z});
+operator *[] :: inline (v: V2i, index: int) -> *s32 {
+	return *v.components[index];
 }
 
-random_unit_vec4 :: () -> Vec4 {
-    x := random_01() * 2 - 1;
-    y := random_01() * 2 - 1;
-    z := random_01() * 2 - 1;
-    w := random_01() * 2 - 1;
-    return normalize(Vec4.{x, y, z, w});
+operator + :: inline (a: V3i, b: V3i) -> V3i #symmetric {
+	result: V3i;
+	result.x = a.x + b.x;
+	result.y = a.y + b.y;
+	result.z = a.z + b.z;
+	return result;
 }
 
-// white noise hash
-vec2_hash :: (v: Vec2) -> Vec2 {
-    x := Vec2.{dot_product(v, Vec2.{127.1, 311.7}), dot_product(v, Vec2.{269.5, 183.3})};
-    return frac(sin(x) * 43758.545);
+operator - :: inline (a: V3i, b: V3i) -> V3i #symmetric {
+	result: V3i;
+	result.x = a.x - b.x;
+	result.y = a.y - b.y;
+	result.z = a.z - b.z;
+	return result;
 }
 
-sin :: (v: Vec2) -> Vec2 {
-    return .{sin(v.x), sin(v.y)};
+operator * :: inline (a: V3i, b: V3i) -> V3i #symmetric {
+	result: V3i;
+	result.x = a.x * b.x;
+	result.y = a.y * b.y;
+	result.z = a.z * b.z;
+	return result;
 }
 
-approach :: (c: Vec2, g: Vec2, time_to_goal: float, delta: float) -> Vec2 {
-    return .{
-        approach(c.x, g.x, time_to_goal, delta),
-        approach(c.y, g.y, time_to_goal, delta)
-    };
+operator / :: inline (a: V3i, b: V3i) -> V3i #symmetric {
+	result: V3i;
+	result.x = a.x / b.x;
+	result.y = a.y / b.y;
+	result.z = a.z / b.z;
+	return result;
 }
 
-approach :: (c: Vec3, g: Vec3, time_to_goal: float, delta: float) -> Vec3 {
-    return .{
-        approach(c.x, g.x, time_to_goal, delta),
-        approach(c.y, g.y, time_to_goal, delta),
-        approach(c.z, g.z, time_to_goal, delta)
-    };
+operator + :: inline (a: V3i, b: s32) -> V3i #symmetric {
+	result: V3i;
+	result.x = a.x + b;
+	result.y = a.y + b;
+	result.z = a.z + b;
+	return result;
 }
 
-approach :: (c: Vec4, g: Vec4, time_to_goal: float, delta: float) -> Vec4 {
-    return .{
-        approach(c.x, g.x, time_to_goal, delta),
-        approach(c.y, g.y, time_to_goal, delta),
-        approach(c.z, g.z, time_to_goal, delta),
-        approach(c.w, g.w, time_to_goal, delta)
-    };
+operator - :: inline (a: V3i, b: s32) -> V3i #symmetric {
+	result: V3i;
+	result.x = a.x - b;
+	result.y = a.y - b;
+	result.z = a.z - b;
+	return result;
+}
+
+operator * :: inline (a: V3i, b: s32) -> V3i #symmetric {
+	result: V3i;
+	result.x = a.x * b;
+	result.y = a.y * b;
+	result.z = a.z * b;
+	return result;
+}
+
+operator / :: inline (a: V3i, b: s32) -> V3i #symmetric {
+	result: V3i;
+	result.x = a.x / b;
+	result.y = a.y / b;
+	result.z = a.z / b;
+	return result;
+}
+
+operator *[] :: inline (v: V3i, index: int) -> *s32 {
+	return *v.components[index];
+}
+
+operator + :: inline (a: V4i, b: V4i) -> V4i #symmetric {
+	result: V4i;
+	result.x = a.x + b.x;
+	result.y = a.y + b.y;
+	result.z = a.z + b.z;
+	result.w = a.w + b.w;
+	return result;
+}
+
+operator - :: inline (a: V4i, b: V4i) -> V4i #symmetric {
+	result: V4i;
+	result.x = a.x - b.x;
+	result.y = a.y - b.y;
+	result.z = a.z - b.z;
+	result.w = a.w - b.w;
+	return result;
+}
+
+operator * :: inline (a: V4i, b: V4i) -> V4i #symmetric {
+	result: V4i;
+	result.x = a.x * b.x;
+	result.y = a.y * b.y;
+	result.z = a.z * b.z;
+	result.w = a.w * b.w;
+	return result;
+}
+
+operator / :: inline (a: V4i, b: V4i) -> V4i #symmetric {
+	result: V4i;
+	result.x = a.x / b.x;
+	result.y = a.y / b.y;
+	result.z = a.z / b.z;
+	result.w = a.w / b.w;
+	return result;
+}
+
+operator + :: inline (a: V4i, b: s32) -> V4i #symmetric {
+	result: V4i;
+	result.x = a.x + b;
+	result.y = a.y + b;
+	result.z = a.z + b;
+	result.w = a.w + b;
+	return result;
+}
+
+operator - :: inline (a: V4i, b: s32) -> V4i #symmetric {
+	result: V4i;
+	result.x = a.x - b;
+	result.y = a.y - b;
+	result.z = a.z - b;
+	result.w = a.w - b;
+	return result;
+}
+
+operator * :: inline (a: V4i, b: s32) -> V4i #symmetric {
+	result: V4i;
+	result.x = a.x * b;
+	result.y = a.y * b;
+	result.z = a.z * b;
+	result.w = a.w * b;
+	return result;
+}
+
+operator / :: inline (a: V4i, b: s32) -> V4i #symmetric {
+	result: V4i;
+	result.x = a.x / b;
+	result.y = a.y / b;
+	result.z = a.z / b;
+	result.w = a.w / b;
+	return result;
+}
+
+operator *[] :: inline (v: V4i, index: int) -> *s32 {
+	return *v.components[index];
+}
+
+operator + :: inline (a: V2, b: V2) -> V2 #symmetric {
+	result: V2;
+	result.x = a.x + b.x;
+	result.y = a.y + b.y;
+	return result;
+}
+
+operator - :: inline (a: V2, b: V2) -> V2 #symmetric {
+	result: V2;
+	result.x = a.x - b.x;
+	result.y = a.y - b.y;
+	return result;
+}
+
+operator * :: inline (a: V2, b: V2) -> V2 #symmetric {
+	result: V2;
+	result.x = a.x * b.x;
+	result.y = a.y * b.y;
+	return result;
+}
+
+operator / :: inline (a: V2, b: V2) -> V2 #symmetric {
+	result: V2;
+	result.x = a.x / b.x;
+	result.y = a.y / b.y;
+	return result;
+}
+
+operator + :: inline (a: V2, b: float) -> V2 #symmetric {
+	result: V2;
+	result.x = a.x + b;
+	result.y = a.y + b;
+	return result;
+}
+
+operator - :: inline (a: V2, b: float) -> V2 #symmetric {
+	result: V2;
+	result.x = a.x - b;
+	result.y = a.y - b;
+	return result;
+}
+
+operator * :: inline (a: V2, b: float) -> V2 #symmetric {
+	result: V2;
+	result.x = a.x * b;
+	result.y = a.y * b;
+	return result;
+}
+
+operator / :: inline (a: V2, b: float) -> V2 #symmetric {
+	result: V2;
+	result.x = a.x / b;
+	result.y = a.y / b;
+	return result;
+}
+
+operator *[] :: inline (v: V2, index: int) -> *float {
+	return *v.components[index];
+}
+
+operator + :: inline (a: V3, b: V3) -> V3 #symmetric {
+	result: V3;
+	result.x = a.x + b.x;
+	result.y = a.y + b.y;
+	result.z = a.z + b.z;
+	return result;
+}
+
+operator - :: inline (a: V3, b: V3) -> V3 #symmetric {
+	result: V3;
+	result.x = a.x - b.x;
+	result.y = a.y - b.y;
+	result.z = a.z - b.z;
+	return result;
+}
+
+operator * :: inline (a: V3, b: V3) -> V3 #symmetric {
+	result: V3;
+	result.x = a.x * b.x;
+	result.y = a.y * b.y;
+	result.z = a.z * b.z;
+	return result;
+}
+
+operator / :: inline (a: V3, b: V3) -> V3 #symmetric {
+	result: V3;
+	result.x = a.x / b.x;
+	result.y = a.y / b.y;
+	result.z = a.z / b.z;
+	return result;
+}
+
+operator + :: inline (a: V3, b: float) -> V3 #symmetric {
+	result: V3;
+	result.x = a.x + b;
+	result.y = a.y + b;
+	result.z = a.z + b;
+	return result;
+}
+
+operator - :: inline (a: V3, b: float) -> V3 #symmetric {
+	result: V3;
+	result.x = a.x - b;
+	result.y = a.y - b;
+	result.z = a.z - b;
+	return result;
+}
+
+operator * :: inline (a: V3, b: float) -> V3 #symmetric {
+	result: V3;
+	result.x = a.x * b;
+	result.y = a.y * b;
+	result.z = a.z * b;
+	return result;
+}
+
+operator / :: inline (a: V3, b: float) -> V3 #symmetric {
+	result: V3;
+	result.x = a.x / b;
+	result.y = a.y / b;
+	result.z = a.z / b;
+	return result;
+}
+
+operator *[] :: inline (v: V3, index: int) -> *float {
+	return *v.components[index];
+}
+
+operator + :: inline (a: V4, b: V4) -> V4 #symmetric {
+	result: V4;
+	result.x = a.x + b.x;
+	result.y = a.y + b.y;
+	result.z = a.z + b.z;
+	result.w = a.w + b.w;
+	return result;
+}
+
+operator - :: inline (a: V4, b: V4) -> V4 #symmetric {
+	result: V4;
+	result.x = a.x - b.x;
+	result.y = a.y - b.y;
+	result.z = a.z - b.z;
+	result.w = a.w - b.w;
+	return result;
+}
+
+operator * :: inline (a: V4, b: V4) -> V4 #symmetric {
+	result: V4;
+	result.x = a.x * b.x;
+	result.y = a.y * b.y;
+	result.z = a.z * b.z;
+	result.w = a.w * b.w;
+	return result;
+}
+
+operator / :: inline (a: V4, b: V4) -> V4 #symmetric {
+	result: V4;
+	result.x = a.x / b.x;
+	result.y = a.y / b.y;
+	result.z = a.z / b.z;
+	result.w = a.w / b.w;
+	return result;
+}
+
+operator + :: inline (a: V4, b: float) -> V4 #symmetric {
+	result: V4;
+	result.x = a.x + b;
+	result.y = a.y + b;
+	result.z = a.z + b;
+	result.w = a.w + b;
+	return result;
+}
+
+operator - :: inline (a: V4, b: float) -> V4 #symmetric {
+	result: V4;
+	result.x = a.x - b;
+	result.y = a.y - b;
+	result.z = a.z - b;
+	result.w = a.w - b;
+	return result;
+}
+
+operator * :: inline (a: V4, b: float) -> V4 #symmetric {
+	result: V4;
+	result.x = a.x * b;
+	result.y = a.y * b;
+	result.z = a.z * b;
+	result.w = a.w * b;
+	return result;
+}
+
+operator / :: inline (a: V4, b: float) -> V4 #symmetric {
+	result: V4;
+	result.x = a.x / b;
+	result.y = a.y / b;
+	result.z = a.z / b;
+	result.w = a.w / b;
+	return result;
+}
+
+operator *[] :: inline (v: V4, index: int) -> *float {
+	return *v.components[index];
 }

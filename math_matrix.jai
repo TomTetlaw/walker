@@ -6,14 +6,14 @@ Mat4 :: struct {
     _41, _42, _43, _44: float;
 
 #place _11;
-    rows: [4] Vec4;
+    rows: [4] V4;
 #place _11;
     coef: [4][4] float;
 #place _11;
     floats: [16] float;
 }
 
-operator *[] :: (m: *Mat4, index: int) -> *Vec4 {
+operator *[] :: (m: *Mat4, index: int) -> *V4 {
     return *m.rows[index];
 }
 
@@ -43,8 +43,8 @@ operator * :: (a: Mat4, b: Mat4) -> Mat4 {
     return result;
 }
 
-operator * :: (m: Mat4, b: Vec4) -> Vec4 {
-    result: Vec4;
+operator * :: (m: Mat4, b: V4) -> V4 {
+    result: V4;
 
     result.x = b.x * m._11 + b.y * m._12 + b.z * m._13 + b.w * m._14;
     result.y = b.x * m._21 + b.y * m._22 + b.z * m._23 + b.w * m._24;
@@ -61,7 +61,7 @@ mat4_identity :: Mat4.{
     0, 0, 0, 1
 };
 
-mat4_translation :: (t: Vec3) -> Mat4 {
+mat4_translation :: (t: V3) -> Mat4 {
     result := mat4_identity;
 
     result._14 = t.x;
@@ -106,7 +106,7 @@ mat4_rotation :: (q: Quaternion) -> Mat4 {
     return m;
 }
 
-mat4_scale :: (s: Vec3) -> Mat4 {
+mat4_scale :: (s: V3) -> Mat4 {
     result: Mat4;
 
     result._11 = s.x;
@@ -154,15 +154,15 @@ mat4_ortho :: (left: float, right: float, bottom: float, top: float, near: float
     return result;
 }
 
-mat4_look_at :: (position: Vec3, target: Vec3, up_dir := Vec3.{0, 0, 1}) -> Mat4 {
+mat4_look_at :: (position: V3, target: V3, up_dir := V3.{0, 0, 1}) -> Mat4 {
     forward := normalize(target - position);
-    left := normalize(cross_product(up_dir, forward));
-    up := normalize(cross_product(forward, left));
+    left := normalize(cross(up_dir, forward));
+    up := normalize(cross(forward, left));
 
     result: Mat4;
-    result.rows[0] = v4(forward, -dot_product(forward, position));
-    result.rows[1] = v4(left,    -dot_product(left, position));
-    result.rows[2] = v4(up,      -dot_product(up, position));
+    result.rows[0] = v4(forward, -dot(forward, position));
+    result.rows[1] = v4(left, -dot(left, position));
+    result.rows[2] = v4(up, -dot(up, position));
     result.rows[3] = .{0, 0, 0, 1};
     return result;
 }
@@ -178,38 +178,38 @@ mat4_transpose :: (m: Mat4) -> Mat4 {
 }
 
 mat4_inverse :: (m: Mat4) -> Mat4, bool {
-    a := Vec3.{m._11, m._21, m._31};
-    b := Vec3.{m._12, m._22, m._32};
-    c := Vec3.{m._13, m._23, m._33};
-    d := Vec3.{m._14, m._24, m._34};
+    a := V3.{m._11, m._21, m._31};
+    b := V3.{m._12, m._22, m._32};
+    c := V3.{m._13, m._23, m._33};
+    d := V3.{m._14, m._24, m._34};
 
     x := m._41;
     y := m._42;
     z := m._43;
     w := m._44;
 
-    s := cross_product(a, b);
-    t := cross_product(c, d);
+    s := cross(a, b);
+    t := cross(c, d);
     u := a * y - b * x;
     v := c * w - d * z;
 
-    det := dot_product(s, v) + dot_product(t, u);
+    det := dot(s, v) + dot(t, u);
     inv_det := 1.0 / det;
     s *= inv_det;
     t *= inv_det;
     u *= inv_det;
     v *= inv_det;
 
-    r0 := cross_product(b, v) + t * y;
-    r1 := cross_product(v, a) - t * x;
-    r2 := cross_product(d, u) + s * w;
-    r3 := cross_product(u, c) - s * z;
+    r0 := cross(b, v) + t * y;
+    r1 := cross(v, a) - t * x;
+    r2 := cross(d, u) + s * w;
+    r3 := cross(u, c) - s * z;
 
     result := Mat4.{
-        r0.x, r0.y, r0.z, -dot_product(b, t),
-        r1.x, r1.y, r1.z,  dot_product(a, t),
-        r2.x, r2.y, r2.z, -dot_product(d, s),
-        r3.x, r3.y, r3.z,  dot_product(c, s)
+        r0.x, r0.y, r0.z, -dot(b, t),
+        r1.x, r1.y, r1.z,  dot(a, t),
+        r2.x, r2.y, r2.z, -dot(d, s),
+        r3.x, r3.y, r3.z,  dot(c, s)
     };
 
     epsilon := 0.0001;

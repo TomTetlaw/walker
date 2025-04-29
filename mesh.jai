@@ -1,10 +1,12 @@
 
+MESHES_DIRECTORY :: "meshes";
+
 Mesh :: struct {
     next, prev: *Mesh;
 
     name: string;
     bounds: Bounding_Box;
-    positions: [] Vec3;
+    positions: [] V3;
     indices: [] u32;
     num_indices: int;
 
@@ -14,14 +16,16 @@ Mesh :: struct {
     normal_buffer: *SDL_GPUBuffer;
     tangent_buffer: *SDL_GPUBuffer;
     index_buffer: *SDL_GPUBuffer;
+
+    arena: *Arena;
 }
 
 Mesh_Data :: struct {
-    positions: [] Vec3;
-    colours: [] Linear_Colour;
-    tex_coords: [] Vec2;
-    normals: [] Vec3;
-    tangents: [] Vec3;
+    positions: [] V3;
+    colours: [] V4;
+    tex_coords: [] V2;
+    normals: [] V3;
+    tangents: [] V3;
     indices: [] u32;
 }
 
@@ -36,7 +40,7 @@ load_mesh :: (name: string) -> *Mesh {
         if equal(it.name, name) return it;
     }
 
-    path := tprint("meshes/%.mesh", name);
+    path := tprint("%/%.mesh", MESHES_DIRECTORY, name);
     file, ok := file_open(path);
     if ok {
         mesh_name := file_read_string(*file);
@@ -46,20 +50,20 @@ load_mesh :: (name: string) -> *Mesh {
 
         data: Mesh_Data;
 
-        data.positions = tview(Vec3, num_vertices);
-        file_read(*file, data.positions.data, size_of(Vec3) * num_vertices);
+        data.positions = tview(V3, num_vertices);
+        file_read(*file, data.positions.data, size_of(V3) * num_vertices);
 
-        data.colours = tview(Linear_Colour, num_vertices);
-        file_read(*file, data.colours.data, size_of(Linear_Colour) * num_vertices);
+        data.colours = tview(V4, num_vertices);
+        file_read(*file, data.colours.data, size_of(V4) * num_vertices);
 
-        data.tex_coords = tview(Vec2, num_vertices);
-        file_read(*file, data.tex_coords.data, size_of(Vec2) * num_vertices);
+        data.tex_coords = tview(V2, num_vertices);
+        file_read(*file, data.tex_coords.data, size_of(V2) * num_vertices);
 
-        data.normals = tview(Vec3, num_vertices);
-        file_read(*file, data.normals.data, size_of(Vec3) * num_vertices);
+        data.normals = tview(V3, num_vertices);
+        file_read(*file, data.normals.data, size_of(V3) * num_vertices);
 
-        data.tangents = tview(Vec3, num_vertices);
-        file_read(*file, data.tangents.data, size_of(Vec3) * num_vertices);
+        data.tangents = tview(V3, num_vertices);
+        file_read(*file, data.tangents.data, size_of(V3) * num_vertices);
 
         data.indices = tview(u32, num_indices);
         file_read(*file, data.indices.data, size_of(u32) * num_indices);
@@ -76,7 +80,7 @@ create_mesh :: (arena: *Arena, name: string, data: Mesh_Data) -> *Mesh {
     if data.positions.count <= 0 return fallback_mesh;
 
     mesh: Mesh;
-    mesh.name = copy_string_global(name);
+    mesh.name = push_string(name);
     mesh.positions = push_view(arena, data.positions);
 
     if data.indices.count > 0 {
@@ -89,26 +93,28 @@ create_mesh :: (arena: *Arena, name: string, data: Mesh_Data) -> *Mesh {
     bounds.min = v3(FLOAT32_MAX);
     bounds.max = v3(-FLOAT32_MAX);
     for data.positions {
-        bounds.min = min(bounds.min, it);
-        bounds.max = max(bounds.max, it);
+        bounds.min = min_vector(bounds.min, it);
+        bounds.max = max_vector(bounds.max, it);
     }
 
     mesh.bounds = bounds;
 
-    create_buffers(*mesh, data);
+    mesh.arena = arena;
 
-    return bucket_array_add(*meshes, mesh, fallback_mesh);
+    create_buffers(arena, *mesh, data);
+
+    result := push_struct(*meshes_arena, mesh);
+    linked_list_add(*meshes, result);
+    return result;
 }
 
 init_mesh_system :: () {
-    mesh_arena = make_arena();
-
     fallback_data: Mesh_Data;
-    fallback_data.positions = push_view(context.temp_arena, Vec3.[
+    fallback_data.positions = tview(V3.[
         .{0, -0.5, 0}, .{0, -0.5, 0}, .{0, 0, 0.5}
     ]);
-    fallback_data.colours = push_view(context.temp_arena, Linear_Colour.[
-        colour_black, colour_black, colour_black
+    fallback_data.colours = tview(V4.[
+        v4(0.0), v4(0.0), v4(0.0)
     ]);
     fallback_mesh = create_mesh(mesh_arena, "fallback", fallback_data);
     if !fallback_mesh fatal_error("Failed to create fallback mesh");
@@ -118,7 +124,7 @@ init_mesh_system :: () {
 
 generate_cube_mesh :: (arena: *Arena, name: string) -> *Mesh {
     data: Mesh_Data;
-    data.positions = push_view(context.temp_arena, Vec3.[
+    data.positions = tview(V3.[
         .{-0.5, -0.5,  0.5}, .{ 0.5, -0.5,  0.5}, .{ 0.5,  0.5,  0.5},
         .{ 0.5,  0.5,  0.5}, .{-0.5,  0.5,  0.5}, .{-0.5, -0.5,  0.5},
 
@@ -138,27 +144,22 @@ generate_cube_mesh :: (arena: *Arena, name: string) -> *Mesh {
         .{ 0.5, -0.5,  0.5}, .{-0.5, -0.5,  0.5}, .{-0.5, -0.5, -0.5}
     ]);
 
-    data.colours = push_view(context.temp_arena, Linear_Colour.[
-        colour_white, colour_white, colour_white,
-        colour_white, colour_white, colour_white,
-
-        colour_white, colour_white, colour_white,
-        colour_white, colour_white, colour_white,
-
-        colour_white, colour_white, colour_white,
-        colour_white, colour_white, colour_white,
-
-        colour_white, colour_white, colour_white,
-        colour_white, colour_white, colour_white,
-
-        colour_white, colour_white, colour_white,
-        colour_white, colour_white, colour_white,
-
-        colour_white, colour_white, colour_white,
-        colour_white, colour_white, colour_white
+    data.colours = tview(V4.[
+        v4(1.0), v4(1.0), v4(1.0),
+        v4(1.0), v4(1.0), v4(1.0),
+        v4(1.0), v4(1.0), v4(1.0),
+        v4(1.0), v4(1.0), v4(1.0),
+        v4(1.0), v4(1.0), v4(1.0),
+        v4(1.0), v4(1.0), v4(1.0),
+        v4(1.0), v4(1.0), v4(1.0),
+        v4(1.0), v4(1.0), v4(1.0),
+        v4(1.0), v4(1.0), v4(1.0),
+        v4(1.0), v4(1.0), v4(1.0),
+        v4(1.0), v4(1.0), v4(1.0),
+        v4(1.0), v4(1.0), v4(1.0)
     ]);
 
-    data.tex_coords = push_view(context.temp_arena, Vec2.[
+    data.tex_coords = tview(V2.[
         .{0.0, 0.0}, .{1.0, 0.0}, .{1.0, 1.0},
         .{1.0, 1.0}, .{0.0, 1.0}, .{0.0, 0.0},
 
@@ -178,7 +179,7 @@ generate_cube_mesh :: (arena: *Arena, name: string) -> *Mesh {
         .{1.0, 1.0}, .{0.0, 1.0}, .{0.0, 0.0}
     ]);
 
-    data.normals = push_view(context.temp_arena, Vec3.[
+    data.normals = tview(V3.[
         .{ 0.0,  0.0,  1.0}, .{ 0.0,  0.0,  1.0}, .{ 0.0,  0.0,  1.0},
         .{ 0.0,  0.0,  1.0}, .{ 0.0,  0.0,  1.0}, .{ 0.0,  0.0,  1.0},
 
@@ -198,7 +199,7 @@ generate_cube_mesh :: (arena: *Arena, name: string) -> *Mesh {
         .{ 0.0, -1.0,  0.0}, .{ 0.0, -1.0,  0.0}, .{ 0.0, -1.0,  0.0}
     ]);
 
-    data.tangents = push_view(context.temp_arena, Vec3.[
+    data.tangents = tview(V3.[
         .{ 1.0,  0.0,  0.0}, .{ 1.0,  0.0,  0.0}, .{ 1.0,  0.0,  0.0},
         .{ 1.0,  0.0,  0.0}, .{ 1.0,  0.0,  0.0}, .{ 1.0,  0.0,  0.0},
 
@@ -218,7 +219,7 @@ generate_cube_mesh :: (arena: *Arena, name: string) -> *Mesh {
         .{ 1.0,  0.0,  0.0}, .{ 1.0,  0.0,  0.0}, .{ 1.0,  0.0,  0.0}
     ]);
 
-    data.indices = push_view(context.temp_arena, u32, 36);
+    data.indices = tview(u32, 36);
     for 0..35 data.indices[it] = xx it;
 
     return create_mesh(arena, name, data);
@@ -226,7 +227,7 @@ generate_cube_mesh :: (arena: *Arena, name: string) -> *Mesh {
 
 generate_sphere_mesh :: (arena: *Arena, name: string, radius: float, segments: int) -> *Mesh {
     vert_count := (segments + 1) * (segments + 1);
-    positions := push_view(context.temp_arena, Vec3, vert_count);
+    positions := tview(V3, vert_count);
 
     for lat: 0..segments {
         theta := cast(float) lat / segments;
@@ -247,7 +248,7 @@ generate_sphere_mesh :: (arena: *Arena, name: string, radius: float, segments: i
     }
 
     tri_count := segments * segments * 2;
-    indices := push_view(context.temp_arena, u32, tri_count * 3);
+    indices := tview(u32, tri_count * 3);
 
     cursor := 0;
     for lat: 0..segments-1 for lon: 0..segments-1 {
@@ -280,7 +281,7 @@ recreate_mesh :: (mesh: *Mesh, data: Mesh_Data) {
 	SDL_ReleaseGPUBuffer(context.device, mesh.normal_buffer);
 	SDL_ReleaseGPUBuffer(context.device, mesh.tangent_buffer);
 
-	create_buffers(mesh, data);
+	create_buffers(mesh.arena, mesh, data);
 }
 
 cube_mesh: *Mesh;
@@ -290,9 +291,10 @@ mesh_arena: *Arena;
 
 fallback_mesh: *Mesh;
 
-meshes: Bucket_Array(Mesh);
+meshes: Linked_List(Mesh);
+meshes_arena: Arena;
 
-create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
+create_buffers :: (arena: *Arena, mesh: *Mesh, data: Mesh_Data) {
     generate_normals := true;
     generate_tangents := true;
 
@@ -310,23 +312,23 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
 
     mesh.position_buffer = create_vertex_buffer(tprint("%_positions", mesh.name), data.positions);
 
-    colours: [] Linear_Colour;
-    tex_coords: [] Vec2;
-    normals: [] Vec3;
-    tangents: [] Vec3;
+    colours: [] V4;
+    tex_coords: [] V2;
+    normals: [] V3;
+    tangents: [] V3;
     indices: [] u32;
 
     if data.colours.count > 0 {
         colours = data.colours;
     } else {
-        colours = push_view(context.temp_arena, Linear_Colour, data.positions.count);
-        for * colours it.* = rgba(1.0);
+        colours = tview(V4, data.positions.count);
+        for * colours it.* = v4(1.0);
     }
 
     if data.tex_coords.count > 0 {
         tex_coords = data.tex_coords;
     } else {
-        tex_coords = push_view(context.temp_arena, Vec2, data.positions.count);
+        tex_coords = tview(V2, data.positions.count);
     }
 
     use_indices := data.indices.count > 0;
@@ -334,7 +336,7 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
     if data.normals.count > 0 {
         normals = data.normals;
     } else {
-        normals = push_view(context.temp_arena, Vec3, data.positions.count);
+        normals = tview(V3, data.positions.count);
 
         if generate_normals {
             tri_count := 0;
@@ -357,7 +359,7 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
                     e1 := p1 - p0;
                     e2 := p2 - p0;
 
-                    n := cross_product(e1, e2);
+                    n := cross(e1, e2);
                     normals[i0] = n;
                     normals[i1] = n;
                     normals[i2] = n;
@@ -375,7 +377,7 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
                     e1 := p1 - p0;
                     e2 := p2 - p0;
 
-                    n := cross_product(e1, e2);
+                    n := cross(e1, e2);
                     normals[i0] = n;
                     normals[i1] = n;
                     normals[i2] = n;
@@ -391,7 +393,7 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
     if data.tangents.count > 0 {
         tangents = data.tangents;
     } else {
-        tangents = push_view(context.temp_arena, Vec3, data.positions.count);
+        tangents = tview(V3, data.positions.count);
 
         if generate_tangents {
             tri_count := 0;
@@ -418,9 +420,9 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
                     n1 := normals[i1];
                     n2 := normals[i2];
 
-                    t0 := cross_product(n0, e1);
-                    t1 := cross_product(n1, e1);
-                    t2 := cross_product(n2, e1);
+                    t0 := cross(n0, e1);
+                    t1 := cross(n1, e1);
+                    t2 := cross(n2, e1);
 
                     tangents[i0] = t0;
                     tangents[i1] = t1;
@@ -443,9 +445,9 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
                     n1 := normals[i1];
                     n2 := normals[i2];
 
-                    t0 := cross_product(n0, e1);
-                    t1 := cross_product(n1, e1);
-                    t2 := cross_product(n2, e1);
+                    t0 := cross(n0, e1);
+                    t1 := cross(n1, e1);
+                    t2 := cross(n2, e1);
 
                     tangents[i0] = t0;
                     tangents[i1] = t1;
@@ -462,11 +464,11 @@ create_buffers :: (mesh: *Mesh, data: Mesh_Data) {
     if data.indices.count > 0 {
         indices = data.indices;
     } else {
-        indices = push_view(context.temp_arena, u32, data.positions.count);
+        indices = tview(u32, data.positions.count);
         for * indices it.* = xx it_index;
     }
 
-    mesh.indices = push_view(mesh_arena, indices);
+    mesh.indices = push_view(arena, indices);
 
     mesh.colour_buffer = create_vertex_buffer(tprint("%_colours", mesh.name), colours);
     mesh.tex_coord_buffer = create_vertex_buffer(tprint("%_tex_coords", mesh.name), tex_coords);
