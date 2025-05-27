@@ -137,17 +137,17 @@ mat4_projection :: (fov_turns: float, aspect: float, near: float, far: float) ->
     return result * vulkan_projection_coord_conversion();
 }
 
-mat4_ortho :: (left: float, right: float, bottom: float, top: float, near: float, far: float) -> Mat4 {
+mat4_orthographic :: (left: float, right: float, bottom: float, top: float, near: float, far: float) -> Mat4 {
     result: Mat4;
 
-    result._11 = 1.0 / (far - near);
-    result._14 = -near / (far - near);
+    result._11 = 2.0 / (right - left);
+    result._14 = -(right + left) / (right - left);
 
-    result._22 = 2.0 / (right - left);
-    result._24 = -(right + left) / (right - left);
+    result._22 = 2.0 / (top - bottom);
+    result._24 = -(top + bottom) / (top - bottom);
 
-    result._33 = 2.0 / (top - bottom);
-    result._34 = -(top + bottom) / (top - bottom);
+    result._33 = 1.0 / (far - near);
+    result._34 = -near / (far - near);
 
     result._44 = 1.0;
 

@@ -45,6 +45,12 @@ V3 :: struct {
     #place x;
     components: [COMPONENTS] float;
     COMPONENTS :: 3;
+
+    #place x;
+    xy: V2;
+
+	#place y;
+    yz: V2;
 }
 
 V4 :: struct {
@@ -53,6 +59,21 @@ V4 :: struct {
     #place x;
     components: [COMPONENTS] float;
     COMPONENTS :: 4;
+
+    #place x;
+    xy: V2;
+
+	#place y;
+    yz: V2;
+
+	#place z;
+    zw: V2;
+
+	#place x;
+    xyz: V3;
+
+	#place y;
+    yzw: V3;
 }
 
 is_vector_type :: (T: Type) -> bool #compile_time {
@@ -105,9 +126,33 @@ normalize :: (v: V4, fallback := V4.{}) -> V4 {
     return .{v.x * inv_length, v.y * inv_length, v.z * inv_length, v.w * inv_length};
 }
 
+rotate :: (v: V2, turns: float) -> V2 {
+    s := sin_turns(turns);
+    c := cos_turns(turns);
+
+    return .{
+        v.x*c + v.y*s,
+        v.x*-s + v.y*c
+    };
+}
+
+lerp :: (a: V2, b: V2, t: float) -> V2 { return .{lerp(a.x, b.x, t), lerp(a.y, b.y, t)}; }
+
 dot :: inline (a: V2, b: V2) -> float { return a.x*b.x + a.y*b.y; }
 dot :: inline (a: V3, b: V3) -> float { return a.x*b.x + a.y*b.y + a.z*b.z; }
 dot :: inline (a: V4, b: V4) -> float { return a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w; }
+
+distance :: inline (a: V2, b: V2) -> float { return length(a - b); }
+distance :: inline (a: V3, b: V3) -> float { return length(a - b); }
+distance :: inline (a: V4, b: V4) -> float { return length(a - b); }
+
+min :: inline (a: V2, b: V2) -> V2 { return .{min(a.x, b.x), min(a.y, b.y)}; }
+min :: inline (a: V3, b: V3) -> V3 { return .{min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)}; }
+min :: inline (a: V4, b: V4) -> V4 { return .{min(a.x, b.x), min(a.y, b.y), min(a.z, b.z), min(a.w, b.w)}; }
+
+max :: inline (a: V2, b: V2) -> V2 { return .{max(a.x, b.x), max(a.y, b.y)}; }
+max :: inline (a: V3, b: V3) -> V3 { return .{max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)}; }
+max :: inline (a: V4, b: V4) -> V4 { return .{max(a.x, b.x), max(a.y, b.y), max(a.z, b.z), max(a.w, b.w)}; }
 
 cross :: inline (a: V3, b: V3) -> V3 {
     return .{

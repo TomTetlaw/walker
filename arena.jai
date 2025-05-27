@@ -1,5 +1,7 @@
 
 Arena :: struct {
+    prev: *Arena;
+
     base: *void;
 
     reserved: int;
@@ -7,12 +9,61 @@ Arena :: struct {
     used: int;
 }
 
+make_arena :: () -> *Arena {
+    arena: *Arena;
+
+    if arena_free_list {
+        arena = arena_free_list;
+        arena_free_list = arena.prev;
+    } else {
+        page_size := get_page_size();
+
+        arena_default_reserve :: 1024 * 1024 * 1024 * 16;
+        arena_default_commit :: 1024 * 4;
+
+        reserve := arena_default_reserve + size_of(Arena);
+        reserve = (reserve + page_size - 1) & ~(page_size - 1);
+
+        commit := arena_default_commit + size_of(Arena);
+        commit = (commit + page_size - 1) & ~(page_size - 1);
+
+        base := virtual_reserve(reserve);
+        if !base {
+            stub_arena :: Arena.{};
+            return *stub_arena;
+        }
+
+        virtual_commit(base, commit);
+
+        arena = cast(*Arena) base;
+        arena.base = arena + 1;
+        arena.reserved = reserve - size_of(Arena);
+        arena.committed = commit - size_of(Arena);
+    }
+
+    memset(arena.base, 0, arena.committed);
+    arena.used = 0;
+
+    return arena;
+}
+
+arena_free_list: *Arena;
+
+free_arena :: (arena: *Arena) {
+    arena.prev = arena_free_list;
+    arena_free_list = arena;
+}
+
 arena_alloc :: (arena: *Arena, size: int, align := 0, $L := #caller_location) -> *void {
-    if !ensure_arena_initialized(arena) return null;
+    if !arena || !arena.base return null;
 
     page_size := get_page_size();
     aligned_size := (size + page_size - 1) & ~(page_size - 1);
     if arena.used + aligned_size >= arena.committed {
+        if arena.committed + aligned_size >= arena.reserved {
+            return null;
+        }
+
         virtual_commit(arena.base + arena.committed, aligned_size);
         arena.committed += aligned_size;
     }
@@ -60,11 +111,15 @@ push_view :: (arena: *Arena, $T: Type, count: int, $L := #caller_location) -> []
 
 push_view :: (arena: *Arena, values: [] $T, $L := #caller_location) -> [] T {
     result := push_view(arena, T, values.count, L);
-    memcpy(result.data, values.data, size_of(T) * values.count);
+    if result.count > 0 {
+        memcpy(result.data, values.data, size_of(T) * values.count);
+    }
+
     return result;
 }
 
 arena_push_mark :: (arena: Arena) -> int {
+    zero(arena.base + arena.used, arena.committed - arena.used);
     return arena.used;
 }
 
@@ -90,6 +145,16 @@ tview :: ($T: Type, count: int, $L := #caller_location) -> [] T {
     #if ini for * result ini(it);
 
     return result;
+}
+
+tstruct :: ($T: Type) -> *T {
+    value := cast(*T) talloc(size_of(T));
+    zero(value);
+
+    ini :: initializer_of(T);
+    #if ini ini(value);
+
+    return value;
 }
 
 tview :: (values: [] $T, $L := #caller_location) -> [] T {
@@ -124,28 +189,17 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
     return null;
 }
 
-ensure_arena_initialized :: (arena: *Arena) -> bool {
-    if arena.base return true;
-
-    arena_default_reserve :: 1024 * 1024 * 1024 * 16;
-    arena_default_commit :: 1024 * 4;
-
-    arena.base = virtual_reserve(arena_default_reserve);
-    if !arena.base return false;
-
-    virtual_commit(arena.base, arena_default_commit);
-
-    arena.reserved = arena_default_reserve;
-    arena.committed = arena_default_commit;
-    arena.used = 0;
-
-    return true;
-}
-
 total_reserved_bytes: int;
 total_committed_bytes: int;
 
 #if OS == .WINDOWS {
+    using,only(
+        VirtualAlloc,
+        GetSystemInfo,
+        MEM_RESERVE, MEM_COMMIT, PAGE_READWRITE,
+        SYSTEM_INFO
+    ) Windows :: #import "Windows";
+
     virtual_reserve :: (size: int) -> *void {
         memory := VirtualAlloc(null, xx size, MEM_RESERVE, PAGE_READWRITE);
         total_reserved_bytes += size;
@@ -163,6 +217,12 @@ total_committed_bytes: int;
         return xx info.dwPageSize;
     }
 } else #if OS == .LINUX {
+    using,only(
+        mmap,
+        getpagesize,
+        PROT_READ, PROT_WRITE, MAP_PRIVATE, MAP_ANONYMOUS, MAP_NORESERVE
+    ) Linux :: #import "POSIX";
+
     virtual_reserve :: (size: int) -> *void {
         memory := mmap(null, xx size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, 0, 0);
         total_reserved_bytes += size;
